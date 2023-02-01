@@ -6,7 +6,7 @@ import numpy as np
 import clap
 from clap import create_model
 from transformers import RobertaTokenizer
-from clap_wrapper import ClapWrapper
+from clap_quantized import ClapQuantized
 from data import get_audio_features
 
 tokenize = RobertaTokenizer.from_pretrained('roberta-base')
@@ -61,7 +61,7 @@ def float32_to_int16(x):
     return (x * 32767.).astype(np.int16)
 
 
-def infer_audio(clap_wrapper: ClapWrapper):
+def infer_audio(clap_wrapper: ClapQuantized):
 
     print('inferring audio...')
 
@@ -106,17 +106,20 @@ if __name__ == "__main__":
         precision=precision,
         device=device,
         enable_fusion=enable_fusion,
-        fusion_type=fusion_type
+        fusion_type=fusion_type,
     )
 
-    clap_wrapper = ClapWrapper(model, model_cfg)
+    clap_wrapper = ClapQuantized(clap = model, clap_cfg = model_cfg)
+    clap_wrapper = clap_wrapper.to(device)
 
-    audio_embed = infer_audio(clap_wrapper)
     text_embeds = infer_text(clap_wrapper)
+    audio_embed = infer_audio(clap_wrapper)
+    
+    print(text_embeds)
+    print(text_embeds.size())
+
     print(audio_embed)
     print(audio_embed.size())
-
-    print(text_embeds.size())
 
     for text_embed in text_embeds:
         # get cosine similarity with audio_embed
