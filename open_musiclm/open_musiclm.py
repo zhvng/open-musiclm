@@ -47,7 +47,6 @@ class TokenConditionedTransformer(nn.Module):
     https://github.com/lucidrains/audiolm-pytorch/blob/main/audiolm_pytorch/audiolm_pytorch.py
     """
     # TODO: Add in text conditioning for parity with AudioLM. Not important for MusicLM though.
-    # TODO: implement option to only calculate logits for last token sequence
 
     def __init__(
         self,
@@ -106,7 +105,7 @@ class TokenConditionedTransformer(nn.Module):
         # text: Optional[List[str]] = None,
         # text_embeds = None,
         cond_drop_prob = None,
-        return_only_coarse_logits = False
+        return_only_final_seq_logits=False
     ):
         """
         all_token_ids: List of tensors containing token ids. Each element can either be 2 dimensional (batch_size, sequence_length) or 3 dimensional (batch_size, tokens_per_step, sequence_length)
@@ -154,27 +153,31 @@ class TokenConditionedTransformer(nn.Module):
 
         all_logits = []
         assert len(all_pred_tokens) == len(self.token_sequences) == len(self.logit_weights)
-        for sequence, pred_tokens, seq_logit_weights in zip(self.token_sequences, all_pred_tokens, self.logit_weights):
-            n = pred_tokens.shape[1]
-            nq = round_down_nearest_multiple(n, sequence.tokens_per_step)
 
-            pred_tokens_groupable, pred_tokens_remainder = pred_tokens[:, :nq], pred_tokens[:, nq:]
+        for index, (sequence, pred_tokens, seq_logit_weights) in enumerate(zip(self.token_sequences, all_pred_tokens, self.logit_weights)):
+            if not return_only_final_seq_logits or index == len(self.token_sequences) - 1:
+                n = pred_tokens.shape[1]
+                nq = round_down_nearest_multiple(n, sequence.tokens_per_step)
 
-            pred_tokens_groupable = rearrange(pred_tokens_groupable, 'b (n q) d -> b n q d', q = sequence.tokens_per_step)
+                pred_tokens_groupable, pred_tokens_remainder = pred_tokens[:, :nq], pred_tokens[:, nq:]
 
-            pred_logits_groupable = einsum('q c d, b n q d -> b n q c', seq_logit_weights, pred_tokens_groupable)
+                pred_tokens_groupable = rearrange(pred_tokens_groupable, 'b (n q) d -> b n q d', q = sequence.tokens_per_step)
 
-            pred_logits_groupable = rearrange(pred_logits_groupable, 'b n q c -> b (n q) c')
+                pred_logits_groupable = einsum('q c d, b n q d -> b n q c', seq_logit_weights, pred_tokens_groupable)
 
-            remainder_num_tokens_in_step = pred_tokens_remainder.shape[1]
+                pred_logits_groupable = rearrange(pred_logits_groupable, 'b n q c -> b (n q) c')
 
-            if remainder_num_tokens_in_step > 0:
-                pred_logits_remainder = einsum('q c d, b q d -> b q c', seq_logit_weights[:remainder_num_tokens_in_step], pred_tokens_remainder)
-                pred_logits = torch.cat((pred_logits_groupable, pred_logits_remainder), dim = 1)
+                remainder_num_tokens_in_step = pred_tokens_remainder.shape[1]
+
+                if remainder_num_tokens_in_step > 0:
+                    pred_logits_remainder = einsum('q c d, b q d -> b q c', seq_logit_weights[:remainder_num_tokens_in_step], pred_tokens_remainder)
+                    pred_logits = torch.cat((pred_logits_groupable, pred_logits_remainder), dim = 1)
+                else:
+                    pred_logits = pred_logits_groupable 
+
+                all_logits.append(pred_logits)
             else:
-                pred_logits = pred_logits_groupable 
-
-            all_logits.append(pred_logits)
+                all_logits.append(None)
 
         return all_logits
 
