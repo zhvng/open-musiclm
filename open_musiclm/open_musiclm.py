@@ -5,24 +5,20 @@ from typing import List, Optional, Union
 import torch
 import torch.nn.functional as F
 import tqdm
-from audiolm_pytorch import (CoarseTransformer, CoarseTransformerWrapper,
-                             FairseqVQWav2Vec, FineTransformer,
-                             FineTransformerWrapper, HubertWithKmeans,
-                             SemanticTransformer, SemanticTransformerWrapper,
-                             SoundStream)
+from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans, SoundStream
 from audiolm_pytorch.hubert_kmeans import HubertWithKmeans
 from audiolm_pytorch.t5 import DEFAULT_T5_NAME
 from audiolm_pytorch.vq_wav2vec import FairseqVQWav2Vec
 from beartype import beartype
-from beartype.typing import List, Optional, Union, Dict
+from beartype.typing import Dict, List, Optional, Union
 from clap_quantized import ClapQuantized
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from torch import einsum, nn
 from transformer import Transformer
-from utils import (all_rows_have_eos_id, get_embeds, append_eos_id,
+from utils import (all_rows_have_eos_id, append_eos_id,
                    batch_unique_consecutive, ceil_div, default, eval_decorator,
-                   exists, generate_mask_with_prob, gumbel_sample,
+                   exists, generate_mask_with_prob, get_embeds, gumbel_sample,
                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
 
 
@@ -422,28 +418,19 @@ class MusicLM(nn.Module):
         assert coarse_transformer.codebook_size == fine_transformer.codebook_size
         assert coarse_transformer.num_coarse_quantizers == fine_transformer.num_coarse_quantizers
 
-        self.semantic_has_condition = semantic_transformer.has_condition
-        self.coarse_has_condition = coarse_transformer.has_condition
-        self.fine_has_condition = fine_transformer.has_condition
-        self.needs_text = any(
-            [self.semantic_has_condition, self.coarse_has_condition, self.fine_has_condition])
-
-        self.semantic = SemanticTransformerWrapper(
-            wav2vec=wav2vec,
+        self.semantic = TokenConditionedTransformerWrapper(
             transformer=semantic_transformer,
-            unique_consecutive=unique_consecutive
+            unique_consecutive=unique_consecutive,
         )
 
-        self.coarse = CoarseTransformerWrapper(
-            wav2vec=wav2vec,
-            soundstream=soundstream,
+        self.coarse = TokenConditionedTransformerWrapper(
             transformer=coarse_transformer,
             unique_consecutive=unique_consecutive
         )
 
-        self.fine = FineTransformerWrapper(
-            soundstream=soundstream,
-            transformer=fine_transformer
+        self.fine = TokenConditionedTransformerWrapper(
+            transformer=fine_transformer,
+            unique_consecutive=unique_consecutive
         )
 
         self.clap = clap
