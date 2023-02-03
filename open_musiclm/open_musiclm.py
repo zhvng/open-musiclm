@@ -55,14 +55,14 @@ class TokenConditionedTransformer(nn.Module):
         token_sequences: List[TokenSequence],
         dim,
         depth,
-        heads = 8,
-        attn_dropout = 0.,
-        ff_dropout = 0.,
-        has_condition = False,
+        heads=8,
+        attn_dropout=0.,
+        ff_dropout=0.,
+        has_condition=False,
         # t5_name = DEFAULT_T5_NAME,
-        cond_as_self_attn_prefix = False,
-        cond_drop_prob = 0.5,
-        grad_shrink_alpha = 0.1,
+        cond_as_self_attn_prefix=False,
+        cond_drop_prob=0.5,
+        grad_shrink_alpha=0.1,
         **kwargs
     ):
         super().__init__()
@@ -71,7 +71,7 @@ class TokenConditionedTransformer(nn.Module):
 
         self.has_condition = has_condition
         self.cond_drop_prob = cond_drop_prob
-        
+
         self.start_tokens, self.eos_ids, self.embeddings, self.logit_weights = [], [], [], []
 
         for sequence in token_sequences:
@@ -84,14 +84,14 @@ class TokenConditionedTransformer(nn.Module):
             self.logit_weights.append(nn.Parameter(torch.randn(sequence.tokens_per_step, vocab_size_with_eos, dim)))
 
         self.transformer = Transformer(
-            dim = dim,
-            depth = depth,
-            heads = heads,
-            attn_dropout = attn_dropout,
-            ff_dropout = ff_dropout,
-            cross_attend = has_condition and not cond_as_self_attn_prefix,
-            cond_as_self_attn_prefix = cond_as_self_attn_prefix,
-            grad_shrink_alpha = grad_shrink_alpha,
+            dim=dim,
+            depth=depth,
+            heads=heads,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout,
+            cross_attend=has_condition and not cond_as_self_attn_prefix,
+            cond_as_self_attn_prefix=cond_as_self_attn_prefix,
+            grad_shrink_alpha=grad_shrink_alpha,
             **kwargs
         )
 
@@ -100,21 +100,21 @@ class TokenConditionedTransformer(nn.Module):
         return next(self.parameters()).device
 
     def forward(self,
-        *,
-        all_token_ids: List[torch.Tensor],
-        self_attn_mask = None,
-        # text: Optional[List[str]] = None,
-        # text_embeds = None,
-        cond_drop_prob = None,
-        return_only_final_seq_logits=False
-    ):
+                *,
+                all_token_ids: List[torch.Tensor],
+                self_attn_mask=None,
+                # text: Optional[List[str]] = None,
+                # text_embeds = None,
+                cond_drop_prob=None,
+                return_only_final_seq_logits=False
+                ):
         """
         all_token_ids: List of tensors containing token ids. Each element can either be 2 dimensional (batch_size, sequence_length * tokens_per_step) or 3 dimensional (batch_size, tokens_per_step, sequence_length)
                        Each element in list corresponds to one token sequence in self.token_sequences (e.g. semantic, coarse acoustic, fine acoustic, etc.)
 
         return_only_final_seq_logits: If True, only return logits for the final token sequence in self.token_sequences.
         """
-        
+
         b, device = all_token_ids[0].shape[0], self.device
 
         all_token_ids = map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids)
@@ -129,8 +129,8 @@ class TokenConditionedTransformer(nn.Module):
 
             # add offsets
             if sequence.tokens_per_step > 1:
-                offsets = sequence.vocab_size * torch.arange(sequence.tokens_per_step, device = device)
-                offsets = repeat(offsets, 'q -> 1 (n q)', n = ceil_div(token_ids.shape[-1], sequence.tokens_per_step))
+                offsets = sequence.vocab_size * torch.arange(sequence.tokens_per_step, device=device)
+                offsets = repeat(offsets, 'q -> 1 (n q)', n=ceil_div(token_ids.shape[-1], sequence.tokens_per_step))
                 offsets = offsets[:, :token_ids.shape[-1]]
                 token_ids = token_ids + offsets
 
@@ -138,19 +138,20 @@ class TokenConditionedTransformer(nn.Module):
             token_embeddings = embedding(token_ids)
 
             tokens.append(token_embeddings)
-            start_tokens.append(repeat(start_token, 'd -> b 1 d', b = b))
+            start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 
             n_tokens = token_embeddings.shape[1]
             split_at.append(n_tokens if len(split_at) == 0 else split_at[-1] + n_tokens)
 
-        tokens = list(itertools.chain(*zip(start_tokens, tokens))) # [start_1, tokens_1, start_2, tokens_2, ...]
-        tokens = torch.cat(tokens, dim = 1)
+        tokens = list(itertools.chain(*zip(start_tokens, tokens)))  # [start_1, tokens_1, start_2, tokens_2, ...]
+        tokens = torch.cat(tokens, dim=1)
 
-        tokens = self.transformer(tokens, self_attn_mask = self_attn_mask)
+        tokens = self.transformer(tokens, self_attn_mask=self_attn_mask)
 
-        split_at = split_at[:-1] # remove last element (total number of tokens)
-        
-        all_pred_tokens = torch.tensor_split(tokens, [sequence.tokens_per_step for sequence in self.token_sequences], dim = 1)
+        split_at = split_at[:-1]  # remove last element (total number of tokens)
+
+        all_pred_tokens = torch.tensor_split(
+            tokens, [sequence.tokens_per_step for sequence in self.token_sequences], dim=1)
 
         # get logits
 
@@ -164,7 +165,8 @@ class TokenConditionedTransformer(nn.Module):
 
                 pred_tokens_groupable, pred_tokens_remainder = pred_tokens[:, :nq], pred_tokens[:, nq:]
 
-                pred_tokens_groupable = rearrange(pred_tokens_groupable, 'b (n q) d -> b n q d', q = sequence.tokens_per_step)
+                pred_tokens_groupable = rearrange(
+                    pred_tokens_groupable, 'b (n q) d -> b n q d', q=sequence.tokens_per_step)
 
                 pred_logits_groupable = einsum('q c d, b n q d -> b n q c', seq_logit_weights, pred_tokens_groupable)
 
@@ -173,10 +175,11 @@ class TokenConditionedTransformer(nn.Module):
                 remainder_num_tokens_in_step = pred_tokens_remainder.shape[1]
 
                 if remainder_num_tokens_in_step > 0:
-                    pred_logits_remainder = einsum('q c d, b q d -> b q c', seq_logit_weights[:remainder_num_tokens_in_step], pred_tokens_remainder)
-                    pred_logits = torch.cat((pred_logits_groupable, pred_logits_remainder), dim = 1)
+                    pred_logits_remainder = einsum(
+                        'q c d, b q d -> b q c', seq_logit_weights[:remainder_num_tokens_in_step], pred_tokens_remainder)
+                    pred_logits = torch.cat((pred_logits_groupable, pred_logits_remainder), dim=1)
                 else:
-                    pred_logits = pred_logits_groupable 
+                    pred_logits = pred_logits_groupable
 
                 all_logits.append(pred_logits)
             else:
@@ -187,17 +190,17 @@ class TokenConditionedTransformer(nn.Module):
     def forward_with_cond_scale(
         self,
         *args,
-        cond_scale = 3,
+        cond_scale=3,
         **kwargs
     ):
         """Doesn't do anything without the AudioLM-pytorch text conditioning implementation. Just use forward() instead."""
 
-        logits = self.forward(*args, cond_drop_prob = 0., **kwargs)
+        logits = self.forward(*args, cond_drop_prob=0., **kwargs)
 
         if cond_scale == 1 or not self.has_condition:
             return logits
 
-        null_logits = self.forward(*args, cond_drop_prob = 1., **kwargs)
+        null_logits = self.forward(*args, cond_drop_prob=1., **kwargs)
 
         scaled_logits = []
 
@@ -325,13 +328,14 @@ class TokenConditionedTransformerWrapper(nn.Module):
             all_token_ids[-1] = all_token_ids[-1][:, :-1]  # don't include eos in loss
 
         # do not attend to padding tokens or eos tokens
-        combined_self_attn_mask = torch.empty((batch, 0), device=device, dtype=torch.bool) 
+        combined_self_attn_mask = torch.empty((batch, 0), device=device, dtype=torch.bool)
         for ids, eos_id in zip(all_token_ids[:-1], self.eos_ids[:-1]):
             mask = (ids != self.pad_id) & (ids != eos_id)
 
-            ids.masked_fill_(~mask, 0) # inplace
+            ids.masked_fill_(~mask, 0)  # inplace
 
-            mask = F.pad(mask, (1, 0), value=True) # transformer appends a start token to beginning of sequence, so add to mask
+            # transformer appends a start token to beginning of sequence, so add to mask
+            mask = F.pad(mask, (1, 0), value=True)
             combined_self_attn_mask = torch.cat((combined_self_attn_mask, mask), dim=-1)
 
         # add our predicted tokens + start token to our mask
@@ -375,6 +379,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
             running_loss += loss * num_logits * cross_entropy_loss_weight
 
         return running_loss / total_logits
+
 
 @beartype
 class MusicLM(nn.Module):
