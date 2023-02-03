@@ -32,11 +32,12 @@ class TokenSequence():
     Information about a type of token sequence that the TokenConditionedTransformer handles
     e.g. semantic tokens, coarse acoustic tokens, fine acoustic tokens, etc.
     """
-    name: Optional[str]
     vocab_size: int         # i.e. codebook_size
 
     tokens_per_step: int    # e.g. 1 for semantic, Q for coarse acoustic, ...
     sequence_length: int    # e.g. 12 for semantic, n_time_steps for coarse acoustic, ...
+
+    unique_consecutive: bool    # whether to remove unique consecutive tokens. see https://github.com/lucidrains/audiolm-pytorch/discussions/13#discussioncomment-4117105
 
 
 class TokenConditionedTransformer(nn.Module):
@@ -108,8 +109,10 @@ class TokenConditionedTransformer(nn.Module):
         return_only_final_seq_logits=False
     ):
         """
-        all_token_ids: List of tensors containing token ids. Each element can either be 2 dimensional (batch_size, sequence_length) or 3 dimensional (batch_size, tokens_per_step, sequence_length)
+        all_token_ids: List of tensors containing token ids. Each element can either be 2 dimensional (batch_size, sequence_length * tokens_per_step) or 3 dimensional (batch_size, tokens_per_step, sequence_length)
                        Each element in list corresponds to one token sequence in self.token_sequences (e.g. semantic, coarse acoustic, fine acoustic, etc.)
+
+        return_only_final_seq_logits: If True, only return logits for the final token sequence in self.token_sequences.
         """
         
         b, device = all_token_ids[0].shape[0], self.device
@@ -121,7 +124,7 @@ class TokenConditionedTransformer(nn.Module):
         tokens = []
         start_tokens = []
         split_at = []
-        for sequence, token_ids, embedding, start_token in zip(self.token_sequences, token_ids, self.embeddings, self.start_tokens):
+        for sequence, token_ids, embedding, start_token in zip(self.token_sequences, all_token_ids, self.embeddings, self.start_tokens):
             # iterate over token sequences
 
             # add offsets
@@ -187,7 +190,7 @@ class TokenConditionedTransformer(nn.Module):
         cond_scale = 3,
         **kwargs
     ):
-        """Doesn't do anything without the AudioLM-pytorch text conditioning implementation"""
+        """Doesn't do anything without the AudioLM-pytorch text conditioning implementation. Just use forward() instead."""
 
         logits = self.forward(*args, cond_drop_prob = 0., **kwargs)
 
@@ -206,6 +209,172 @@ class TokenConditionedTransformer(nn.Module):
 
         return scaled_logits
 
+
+@beartype
+class TokenConditionedTransformerWrapper(nn.Module):
+    def __init__(
+        self,
+        *,
+        transformer: TokenConditionedTransformer,
+        pad_id=-1,
+        unique_consecutive=True,
+        cross_entropy_loss_weights: List[float] = None,
+        mask_prob=0.15
+    ):
+        super().__init__()
+
+        self.transformer = transformer
+
+        self.token_sequences = transformer.token_sequences
+
+        self.unique_consecutive = unique_consecutive
+        self.pad_id = pad_id
+
+        self.cross_entropy_loss_weights = default(cross_entropy_loss_weights, [1 for _ in self.token_sequences])
+
+        self.eos_ids = transformer.eos_ids
+        self.mask_prob = mask_prob
+
+        assert len(self.token_sequences) == len(self.eos_ids) == len(self.cross_entropy_loss_weights)
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
+    @eval_decorator
+    @torch.no_grad()
+    @beartype
+    def generate(
+        self,
+        *,
+        conditioning_token_ids: List[torch.Tensor],
+        max_time_steps=512,
+        filter_thres=0.9,
+        temperature=1.,
+        **kwargs
+    ):
+        assert len(conditioning_token_ids) == len(self.token_sequences) - 1
+
+        batch, device = conditioning_token_ids.shape[0], self.device
+
+        conditioning_token_ids = conditioning_token_ids.to(device)
+
+        pred_token_ids = torch.empty((batch, 0), device=device, dtype=torch.long)
+
+        pred_sequence_info, pred_eos_id = self.token_sequences[-1], self.eos_ids[-1]
+
+        # initialize
+
+        init_pred_time_step = pred_token_ids.shape[-1]
+        sampled_pred_token_ids = pred_token_ids.clone()
+
+        for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
+            for ind in range(pred_sequence_info.tokens_per_step):
+                is_last_step = ind == (pred_sequence_info.tokens_per_step - 1)
+
+                pred_logits = self.transformer.forward(
+                    all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
+                    return_only_final_seq_logits=True,
+                    **kwargs
+                )[-1]
+
+                last_pred_logits = pred_logits[:, -1]
+
+                if not is_last_step:
+                    # prevent from eos if not last quantizer step, but move this to masking logic within the transformer at some point, for both training and eval
+                    last_pred_logits[:, -1] = float('-inf')
+
+                filtered_logits = top_k(last_pred_logits, thres=filter_thres)
+                sampled = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+
+                sampled = rearrange(sampled, 'b -> b 1')
+                sampled_pred_token_ids = torch.cat((sampled_pred_token_ids, sampled), dim=-1)
+
+        sampled_pred_token_ids = mask_out_after_eos_id(
+            sampled_pred_token_ids, pred_eos_id, keep_eos=False)
+        sampled_pred_token_ids = rearrange(
+            sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.tokens_per_step)
+
+        return sampled_pred_token_ids
+
+    def forward(
+        self,
+        *,
+        all_token_ids: List[torch.Tensor],
+        return_loss=False,
+        **kwargs
+    ):
+        assert len(all_token_ids) == len(self.token_sequences)
+
+        batch, device = all_token_ids[0].shape[0], self.device
+
+        all_token_ids = map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids)
+
+        if self.training:
+            all_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(all_token_ids, self.eos_ids)]
+
+        if self.unique_consecutive:
+            for index, sequence_info in enumerate(self.token_sequences):
+                if sequence_info.unique_consecutive:
+                    all_token_ids[index] = batch_unique_consecutive(all_token_ids[index], pad_value=self.pad_id)
+
+        if return_loss:
+            all_labels = [ids for ids in all_token_ids[:-1]]
+            all_labels[-1] = all_token_ids[-1].clone()
+
+            all_token_ids[-1] = all_token_ids[-1][:, :-1]  # don't include eos in loss
+
+        # do not attend to padding tokens or eos tokens
+        combined_self_attn_mask = torch.empty((batch, 0), device=device, dtype=torch.bool) 
+        for ids, eos_id in zip(all_token_ids[:-1], self.eos_ids[:-1]):
+            mask = (ids != self.pad_id) & (ids != eos_id)
+
+            ids.masked_fill_(~mask, 0) # inplace
+
+            mask = F.pad(mask, (1, 0), value=True) # transformer appends a start token to beginning of sequence, so add to mask
+            combined_self_attn_mask = torch.cat((combined_self_attn_mask, mask), dim=-1)
+
+        # add our predicted tokens + start token to our mask
+        pred_token_len = all_token_ids[-1].shape[-1]
+        combined_self_attn_mask = F.pad(combined_self_attn_mask, (0, pred_token_len + 1), value=True)
+
+        # forgetful causal mask - structured dropout
+        if self.mask_prob > 0 and self.training:
+            combined_self_attn_mask &= generate_mask_with_prob(
+                combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
+
+        all_logits = self.transformer.forward(
+            all_token_ids=all_token_ids,
+            self_attn_mask=combined_self_attn_mask,
+            **kwargs
+        )
+
+        # whether to early return the logits
+
+        if not return_loss:
+            return all_logits
+
+        all_logits = map(lambda t: rearrange(t, 'b n c -> b c n'), all_logits)
+
+        total_logits = 0
+        running_loss = 0.
+        for logits, labels, num_all_logits, cross_entropy_loss_weight, sequence_info in zip(all_logits, all_labels, num_all_logits, self.cross_entropy_loss_weights, self.token_sequences):
+            loss = 0.
+            num_logits = 0
+
+            if cross_entropy_loss_weight > 0 and exists(logits):
+                num_logits = (labels != self.pad_id).sum() if self.unique_consecutive else labels.numel()
+
+                loss = F.cross_entropy(
+                    logits,
+                    labels,
+                    ignore_index=self.pad_id if sequence_info.unique_consecutive else None
+                )
+
+            total_logits += num_logits
+            running_loss += loss * num_logits * cross_entropy_loss_weight
+
+        return running_loss / total_logits
 
 @beartype
 class MusicLM(nn.Module):
