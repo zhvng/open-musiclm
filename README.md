@@ -1,10 +1,8 @@
-<img alt='diagram of MusicLM' src='musiclm.png' title="MusicLM" height='200px'>
-<img alt='diagram of CLAP' src='clap.png' title="CLAP" height='200px'>
-
 # Open MusicLM - pytorch 🗽
 Pytorch implementation of MusicLM that uses CLAP instead of MuLan.
 
-Contains a refactored DRY version of much of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
+<img alt='diagram of MusicLM' src='musiclm.png' title="MusicLM" height='150px'>
+<img alt='diagram of CLAP' src='clap.png' title="CLAP" height='150px'>
 
 
 # Why CLAP?
@@ -18,7 +16,7 @@ The goal of this project is to replicate the results of MusicLM as quickly as po
 
 
 # Thank you
-* [lucidrains](https://github.com/lucidrains/) for his [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation
+* [lucidrains](https://github.com/lucidrains/) for his [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored DRY version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
 * LAION for [CLAP](https://github.com/LAION-AI/CLAP)
 
 # Citations
