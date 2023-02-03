@@ -27,16 +27,13 @@ from utils import (all_rows_have_eos_id, append_eos_id,
 
 
 @dataclass
-class TokenSequence():
+class TokenSequenceInfo():
     """
     Information about a type of token sequence that the TokenConditionedTransformer handles
     e.g. semantic tokens, coarse acoustic tokens, fine acoustic tokens, etc.
     """
-    vocab_size: int         # i.e. codebook_size
-
-    tokens_per_step: int    # e.g. 1 for semantic, Q for coarse acoustic, ...
-    sequence_length: int    # e.g. 12 for semantic, n_time_steps for coarse acoustic, ...
-
+    codebook_size: int
+    num_quantizers: int    # e.g. 1 for semantic, Q for coarse acoustic, ...
     unique_consecutive: bool    # whether to remove unique consecutive tokens. see https://github.com/lucidrains/audiolm-pytorch/discussions/13#discussioncomment-4117105
 
 
@@ -44,7 +41,7 @@ class TokenConditionedTransformer(nn.Module):
     """
     Combination of the SemanticTransformer, CoarseTransformer and FineTransformer in lucidrain's AudioLM implementation,
     except that it is not tied to any specific type of token sequence. Instead, it can handle a variable number of
-    token sequences, each with its own vocab size, tokens_per_step and sequence length.
+    token sequences, each with its own parameters. 
     https://github.com/lucidrains/audiolm-pytorch/blob/main/audiolm_pytorch/audiolm_pytorch.py
     """
     # TODO: Add in text conditioning for parity with AudioLM. Not important for MusicLM though.
@@ -52,7 +49,7 @@ class TokenConditionedTransformer(nn.Module):
     def __init__(
         self,
         *,
-        token_sequences: List[TokenSequence],
+        token_sequences: List[TokenSequenceInfo],
         dim,
         depth,
         heads=8,
@@ -76,12 +73,12 @@ class TokenConditionedTransformer(nn.Module):
 
         for sequence in token_sequences:
             self.start_tokens.append(nn.Parameter(torch.randn(dim)))
-            self.eos_ids.append(sequence.vocab_size)
+            self.eos_ids.append(sequence.codebook_size)
 
-            vocab_size_with_eos = sequence.vocab_size + 1
+            codebook_size_with_eos = sequence.codebook_size + 1
 
-            self.embeddings.append(nn.Embedding(vocab_size_with_eos * sequence.tokens_per_step, dim))
-            self.logit_weights.append(nn.Parameter(torch.randn(sequence.tokens_per_step, vocab_size_with_eos, dim)))
+            self.embeddings.append(nn.Embedding(codebook_size_with_eos * sequence.num_quantizers, dim))
+            self.logit_weights.append(nn.Parameter(torch.randn(sequence.num_quantizers, codebook_size_with_eos, dim)))
 
         self.transformer = Transformer(
             dim=dim,
@@ -109,7 +106,7 @@ class TokenConditionedTransformer(nn.Module):
                 return_only_final_seq_logits=False
                 ):
         """
-        all_token_ids: List of tensors containing token ids. Each element can either be 2 dimensional (batch_size, sequence_length * tokens_per_step) or 3 dimensional (batch_size, tokens_per_step, sequence_length)
+        all_token_ids: List of tensors containing token ids. Each element can either be 2 dimensional (batch_size, n_time_steps * num_quantizers) or 3 dimensional (batch_size, n_time_steps, num_quantizers)
                        Each element in list corresponds to one token sequence in self.token_sequences (e.g. semantic, coarse acoustic, fine acoustic, etc.)
 
         return_only_final_seq_logits: If True, only return logits for the final token sequence in self.token_sequences.
@@ -125,12 +122,11 @@ class TokenConditionedTransformer(nn.Module):
         start_tokens = []
         split_at = []
         for sequence, token_ids, embedding, start_token in zip(self.token_sequences, all_token_ids, self.embeddings, self.start_tokens):
-            # iterate over token sequences
 
             # add offsets
-            if sequence.tokens_per_step > 1:
-                offsets = sequence.vocab_size * torch.arange(sequence.tokens_per_step, device=device)
-                offsets = repeat(offsets, 'q -> 1 (n q)', n=ceil_div(token_ids.shape[-1], sequence.tokens_per_step))
+            if sequence.num_quantizers > 1:
+                offsets = sequence.codebook_size * torch.arange(sequence.num_quantizers, device=device)
+                offsets = repeat(offsets, 'q -> 1 (n q)', n=ceil_div(token_ids.shape[-1], sequence.num_quantizers))
                 offsets = offsets[:, :token_ids.shape[-1]]
                 token_ids = token_ids + offsets
 
@@ -151,7 +147,7 @@ class TokenConditionedTransformer(nn.Module):
         split_at = split_at[:-1]  # remove last element (total number of tokens)
 
         all_pred_tokens = torch.tensor_split(
-            tokens, [sequence.tokens_per_step for sequence in self.token_sequences], dim=1)
+            tokens, [sequence.num_quantizers for sequence in self.token_sequences], dim=1)
 
         # get logits
 
@@ -161,12 +157,12 @@ class TokenConditionedTransformer(nn.Module):
         for index, (sequence, pred_tokens, seq_logit_weights) in enumerate(zip(self.token_sequences, all_pred_tokens, self.logit_weights)):
             if not return_only_final_seq_logits or index == len(self.token_sequences) - 1:
                 n = pred_tokens.shape[1]
-                nq = round_down_nearest_multiple(n, sequence.tokens_per_step)
+                nq = round_down_nearest_multiple(n, sequence.num_quantizers)
 
                 pred_tokens_groupable, pred_tokens_remainder = pred_tokens[:, :nq], pred_tokens[:, nq:]
 
                 pred_tokens_groupable = rearrange(
-                    pred_tokens_groupable, 'b (n q) d -> b n q d', q=sequence.tokens_per_step)
+                    pred_tokens_groupable, 'b (n q) d -> b n q d', q=sequence.num_quantizers)
 
                 pred_logits_groupable = einsum('q c d, b n q d -> b n q c', seq_logit_weights, pred_tokens_groupable)
 
@@ -215,6 +211,7 @@ class TokenConditionedTransformer(nn.Module):
 
 @beartype
 class TokenConditionedTransformerWrapper(nn.Module):
+    """Combination of SemanticTransformerWrapper, CoarseTransformerWrapper and FineTransformerWrapper in lucidrain's audiolm-pytorch, without the input processing + text conditioning"""
     def __init__(
         self,
         *,
@@ -272,8 +269,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
         sampled_pred_token_ids = pred_token_ids.clone()
 
         for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
-            for ind in range(pred_sequence_info.tokens_per_step):
-                is_last_step = ind == (pred_sequence_info.tokens_per_step - 1)
+            for ind in range(pred_sequence_info.num_quantizers):
+                is_last_step = ind == (pred_sequence_info.num_quantizers - 1)
 
                 pred_logits = self.transformer.forward(
                     all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
@@ -296,7 +293,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         sampled_pred_token_ids = mask_out_after_eos_id(
             sampled_pred_token_ids, pred_eos_id, keep_eos=False)
         sampled_pred_token_ids = rearrange(
-            sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.tokens_per_step)
+            sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
 
         return sampled_pred_token_ids
 
