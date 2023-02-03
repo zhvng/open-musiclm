@@ -14,7 +14,7 @@ from audiolm_pytorch.hubert_kmeans import HubertWithKmeans
 from audiolm_pytorch.t5 import DEFAULT_T5_NAME
 from audiolm_pytorch.vq_wav2vec import FairseqVQWav2Vec
 from beartype import beartype
-from beartype.typing import List, Optional, Union
+from beartype.typing import List, Optional, Union, Dict
 from clap_quantized import ClapQuantized
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
@@ -29,8 +29,7 @@ from utils import (all_rows_have_eos_id, get_embeds, append_eos_id,
 @dataclass
 class TokenSequenceInfo():
     """
-    Information about a type of token sequence that the TokenConditionedTransformer handles
-    e.g. semantic tokens, coarse acoustic tokens, fine acoustic tokens, etc.
+    Defines a token sequence to be conditioned on or predicted in TokenConditionedTransformer
     """
     codebook_size: int
     num_quantizers: int    # e.g. 1 for semantic, Q for coarse acoustic, ...
@@ -39,9 +38,8 @@ class TokenSequenceInfo():
 
 class TokenConditionedTransformer(nn.Module):
     """
-    Combination of the SemanticTransformer, CoarseTransformer and FineTransformer in lucidrain's AudioLM implementation,
-    except that it is not tied to any specific type of token sequence. Instead, it can handle a variable number of
-    token sequences, each with its own parameters. 
+    Combination of the SemanticTransformer, CoarseTransformer and FineTransformer in lucidrain's AudioLM implementation.
+    Can handle a variable number of token sequences, each with their own parameters. 
     https://github.com/lucidrains/audiolm-pytorch/blob/main/audiolm_pytorch/audiolm_pytorch.py
     """
     # TODO: Add in text conditioning for parity with AudioLM. Not important for MusicLM though.
@@ -54,9 +52,8 @@ class TokenConditionedTransformer(nn.Module):
         depth,
         heads=8,
         attn_dropout=0.,
-        ff_dropout=0.,
+        ff_dropout=0.1,
         has_condition=False,
-        # t5_name = DEFAULT_T5_NAME,
         cond_as_self_attn_prefix=False,
         cond_drop_prob=0.5,
         grad_shrink_alpha=0.1,
@@ -100,8 +97,6 @@ class TokenConditionedTransformer(nn.Module):
                 *,
                 all_token_ids: List[torch.Tensor],
                 self_attn_mask=None,
-                # text: Optional[List[str]] = None,
-                # text_embeds = None,
                 cond_drop_prob=None,
                 return_only_final_seq_logits=False
                 ):
@@ -376,6 +371,36 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         return running_loss / total_logits
 
+
+@beartype
+def create_semantic_transformer(dim=1024, depth=6, **kwargs):
+
+    clap_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=12, unique_consecutive=False)
+    semantic_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=1, unique_consecutive=True)
+
+    return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence], dim=dim, depth=depth, **kwargs)
+
+
+@beartype
+def create_coarse_transformer(dim=512, depth=6, num_coarse_quantizers=4, **kwargs):
+
+    clap_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=12, unique_consecutive=False)
+    semantic_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=1, unique_consecutive=True)
+    coarse_sequence = TokenSequenceInfo(
+        codebook_size=1024, num_quantizers=num_coarse_quantizers, unique_consecutive=False)
+
+    return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence, coarse_sequence], dim=dim, depth=depth, **kwargs)
+
+
+@beartype
+def create_fine_transformer(dim=512, depth=6, num_fine_quantizers=8, **kwargs):
+
+    clap_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=12, unique_consecutive=False)
+    coarse_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=3, unique_consecutive=False)
+    fine_sequence = TokenSequenceInfo(
+        codebook_size=1024, num_quantizers=num_fine_quantizers, unique_consecutive=False)
+
+    return TokenConditionedTransformer(token_sequences=[clap_sequence, coarse_sequence, fine_sequence], dim=dim, depth=depth, **kwargs)
 
 @beartype
 class MusicLM(nn.Module):
