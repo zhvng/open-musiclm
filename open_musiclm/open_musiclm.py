@@ -356,14 +356,15 @@ class TokenConditionedTransformerWrapper(nn.Module):
         for logits, labels, num_all_logits, cross_entropy_loss_weight, sequence_info in zip(all_logits, all_labels, num_all_logits, self.cross_entropy_loss_weights, self.token_sequences):
             loss = 0.
             num_logits = 0
+            unique_consecutive = sequence_info.unique_consecutive and self.unique_consecutive
 
             if cross_entropy_loss_weight > 0 and exists(logits):
-                num_logits = (labels != self.pad_id).sum() if self.unique_consecutive else labels.numel()
+                num_logits = (labels != self.pad_id).sum() if unique_consecutive else labels.numel()
 
                 loss = F.cross_entropy(
                     logits,
                     labels,
-                    ignore_index=self.pad_id if sequence_info.unique_consecutive else None
+                    ignore_index=self.pad_id if unique_consecutive else None
                 )
 
             total_logits += num_logits
@@ -410,9 +411,9 @@ class MusicLM(nn.Module):
         wav2vec: Optional[Union[FairseqVQWav2Vec, HubertWithKmeans]],
         clap: ClapQuantized,
         soundstream: SoundStream,
-        semantic_transformer: SemanticTransformer,
-        coarse_transformer: CoarseTransformer,
-        fine_transformer: FineTransformer,
+        semantic_transformer: TokenConditionedTransformer,
+        coarse_transformer: TokenConditionedTransformer,
+        fine_transformer: TokenConditionedTransformer,
         unique_consecutive=True
     ):
         super().__init__()
