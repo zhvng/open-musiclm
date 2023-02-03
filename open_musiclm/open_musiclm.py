@@ -271,7 +271,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
             for ind in range(pred_sequence_info.num_quantizers):
                 is_last_step = ind == (pred_sequence_info.num_quantizers - 1)
 
-                pred_logits = self.transformer.forward(
+                pred_logits = self.transformer(
                     all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
                     return_only_final_seq_logits=True,
                     **kwargs
@@ -343,7 +343,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
             combined_self_attn_mask &= generate_mask_with_prob(
                 combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
 
-        all_logits = self.transformer.forward(
+        all_logits = self.transformer(
             all_token_ids=all_token_ids,
             self_attn_mask=combined_self_attn_mask,
             **kwargs
