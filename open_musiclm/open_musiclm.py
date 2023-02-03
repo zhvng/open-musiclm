@@ -20,7 +20,7 @@ from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from torch import einsum, nn
 from transformer import Transformer
-from utils import (all_rows_have_eos_id, append_eos_id,
+from utils import (all_rows_have_eos_id, get_embeds, append_eos_id,
                    batch_unique_consecutive, ceil_div, default, eval_decorator,
                    exists, generate_mask_with_prob, gumbel_sample,
                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
@@ -131,8 +131,7 @@ class TokenConditionedTransformer(nn.Module):
                 token_ids = token_ids + offsets
 
             # get embeddings and prepare for next step
-            token_embeddings = embedding(token_ids)
-
+            token_embeddings = get_embeds(embedding, token_ids, pad_id = -1) if sequence.unique_consecutive else embedding(token_ids)
             tokens.append(token_embeddings)
             start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 

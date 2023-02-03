@@ -1,6 +1,8 @@
 import torch
+from torch import nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
+from beartype import beartype
 
 from einops import rearrange, repeat, reduce
 
@@ -102,3 +104,25 @@ def append_eos_id(ids, eos_id):
 def batch_unique_consecutive(t, pad_value = 0.):
     unique_arr = [torch.unique_consecutive(el) for el in t.unbind(dim = 0)]
     return pad_sequence(unique_arr, batch_first = True, padding_value = pad_value)
+
+# to get embedding from sequence with padding token
+
+@beartype
+def get_embeds(
+    embeddings: nn.Embedding,
+    codes: torch.Tensor,
+    pad_id = -1,
+    return_mask = False,
+    mask_pad_pos_to = 0
+):
+    pad_mask = codes == pad_id
+    codes_without_pad = codes.masked_fill(pad_mask, 0) # just retrieve first code as dummy
+    embeds = embeddings(codes_without_pad)
+
+    if exists(mask_pad_pos_to):
+        embeds = embeds.masked_fill(rearrange(pad_mask, '... -> ... 1'), mask_pad_pos_to)
+
+    if return_mask:
+        return embeds, ~pad_mask
+
+    return embeds
