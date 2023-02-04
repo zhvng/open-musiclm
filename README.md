@@ -1,12 +1,10 @@
 # Open MusicLM
 Pytorch implementation of MusicLM that uses CLAP as an audio-text model instead of MuLan. (work in progress)
 
-<p float='left'>
+<p align='center'>
 <img alt='diagram of MusicLM' src='musiclm.png' title="MusicLM" height='250px'>
 <img alt='diagram of CLAP' src='clap.png' title="CLAP" height='250px'>
 </p>
-
-<b><sup>Diagrams of MusicLM (left) and CLAP (right)</sup></b>
 
 # Why CLAP?
 CLAP is a joint audio-text model trained on [LAION-Audio-630K](https://github.com/LAION-AI/audio-dataset). Similar to MuLan, it consists of an audio tower and a text tower that project their respective media onto a shared latent space (512 dimensions in CLAP and 128 dimensions in MuLan).
@@ -19,7 +17,7 @@ The goal of this project is to replicate the results of MusicLM as quickly as po
 
 
 # Thank you
-* [lucidrains](https://github.com/lucidrains/) for his [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored DRY version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
+* [lucidrains](https://github.com/lucidrains/) for the [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored DRY version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
 * LAION for [CLAP](https://github.com/LAION-AI/CLAP)
 
 # Citations
