@@ -23,6 +23,10 @@ def remainder_needed_until_multiple(n, mult):
 def round_down_nearest_multiple(val, mult):
     return (val // mult) * mult
 
+def curtail_to_multiple(t, mult):
+    data_len = t.shape[-1]
+    return t[..., :round_down_nearest_multiple(data_len, mult)]
+
 def eval_decorator(fn):
     def inner(model, *args, **kwargs):
         was_training = model.training
