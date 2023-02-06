@@ -238,6 +238,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         self,
         *,
         conditioning_token_ids: List[torch.Tensor],
+        pred_token_ids: Optional[torch.Tensor] = None,
         max_time_steps=512,
         filter_thres=0.9,
         temperature=1.,
@@ -250,7 +251,10 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         conditioning_token_ids = conditioning_token_ids.to(device)
 
-        pred_token_ids = torch.empty((batch, 0), device=device, dtype=torch.long)
+        if exists(pred_token_ids):
+            assert pred_token_ids.shape[0] == batch
+        else:
+            pred_token_ids = torch.empty((batch, 0), device=device, dtype=torch.long)
 
         pred_sequence_info, pred_eos_id = self.token_sequences[-1], self.eos_ids[-1]
 
