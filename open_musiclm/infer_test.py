@@ -3,11 +3,9 @@ import torch
 import librosa
 
 import numpy as np
-import clap
 from clap import create_model
 from transformers import RobertaTokenizer
 from clap_quantized import ClapQuantized
-from data import get_audio_features
 
 tokenize = RobertaTokenizer.from_pretrained('roberta-base')
 
@@ -72,17 +70,17 @@ def infer_audio(clap_wrapper: ClapQuantized):
     audio_waveform = int16_to_float32(float32_to_int16(audio_waveform))
     audio_waveform = torch.from_numpy(audio_waveform).float()
 
-    audio_dict = {}
+    # audio_dict = {}
 
-    # the 'fusion' truncate mode can be changed to 'rand_trunc' if run in unfusion mode
-    audio_dict = get_audio_features(
-        audio_dict, audio_waveform, 480000,
-        data_truncating='fusion',
-        data_filling='repeatpad',
-        audio_cfg=clap_wrapper.clap_cfg['audio_cfg']
-    )
+    # # the 'fusion' truncate mode can be changed to 'rand_trunc' if run in unfusion mode
+    # audio_dict = get_audio_features(
+    #     audio_dict, audio_waveform, 480000,
+    #     data_truncating='fusion',
+    #     data_filling='repeatpad',
+    #     audio_cfg=clap_wrapper.clap_cfg['audio_cfg']
+    # )
 
-    audio_embed = clap_wrapper(audio_input=[audio_dict])
+    audio_embed = clap_wrapper(audio_input=[audio_waveform])
 
     return audio_embed
 
