@@ -241,6 +241,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         max_time_steps=512,
         filter_thres=0.9,
         temperature=1.,
+        include_eos_in_output=True,
         **kwargs
     ):
         assert len(conditioning_token_ids) == len(self.token_sequences) - 1
@@ -281,7 +282,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
                 sampled_pred_token_ids = torch.cat((sampled_pred_token_ids, sampled), dim=-1)
 
         sampled_pred_token_ids = mask_out_after_eos_id(
-            sampled_pred_token_ids, pred_eos_id, keep_eos=False)
+            sampled_pred_token_ids, pred_eos_id, keep_eos=include_eos_in_output)
         sampled_pred_token_ids = rearrange(
             sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
 
@@ -370,34 +371,139 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
 
 @beartype
-def create_semantic_transformer(dim=1024, depth=6, **kwargs):
+def create_semantic_transformer(dim=1024, depth=6, clap_codebook_size=1024, semantic_codebook_size=1024, **kwargs):
 
-    clap_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=12, unique_consecutive=False)
-    semantic_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=1, unique_consecutive=True)
+    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
+    semantic_sequence = TokenSequenceInfo(codebook_size=semantic_codebook_size,
+                                          num_quantizers=1, unique_consecutive=True)
 
     return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence], dim=dim, depth=depth, **kwargs)
 
 
 @beartype
-def create_coarse_transformer(dim=512, depth=6, num_coarse_quantizers=4, **kwargs):
+def create_coarse_transformer(dim=512, depth=6, clap_codebook_size=1024, semantic_codebook_size=1024, acoustic_codebook_size=1024, num_coarse_quantizers=4, **kwargs):
 
-    clap_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=12, unique_consecutive=False)
-    semantic_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=1, unique_consecutive=True)
+    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
+    semantic_sequence = TokenSequenceInfo(codebook_size=semantic_codebook_size,
+                                          num_quantizers=1, unique_consecutive=True)
     coarse_sequence = TokenSequenceInfo(
-        codebook_size=1024, num_quantizers=num_coarse_quantizers, unique_consecutive=False)
+        codebook_size=acoustic_codebook_size, num_quantizers=num_coarse_quantizers, unique_consecutive=False)
 
     return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence, coarse_sequence], dim=dim, depth=depth, **kwargs)
 
 
 @beartype
-def create_fine_transformer(dim=512, depth=6, num_fine_quantizers=8, **kwargs):
+def create_fine_transformer(dim=512, depth=6, clap_codebook_size=1024, acoustic_codebook_size=1024, num_fine_quantizers=8, **kwargs):
 
-    clap_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=12, unique_consecutive=False)
-    coarse_sequence = TokenSequenceInfo(codebook_size=1024, num_quantizers=3, unique_consecutive=False)
+    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
+    coarse_sequence = TokenSequenceInfo(codebook_size=acoustic_codebook_size,
+                                        num_quantizers=3, unique_consecutive=False)
     fine_sequence = TokenSequenceInfo(
-        codebook_size=1024, num_quantizers=num_fine_quantizers, unique_consecutive=False)
+        codebook_size=acoustic_codebook_size, num_quantizers=num_fine_quantizers, unique_consecutive=False)
 
     return TokenConditionedTransformer(token_sequences=[clap_sequence, coarse_sequence, fine_sequence], dim=dim, depth=depth, **kwargs)
+
+
+class SemanticStage(nn.Module):
+    def __init__(
+        self,
+        *,
+        semantic_transformer: TokenConditionedTransformer,
+
+        wav2vec: Optional[Union[FairseqVQWav2Vec, HubertWithKmeans]] = None,
+        clap: ClapQuantized = None,
+
+        pad_id=-1,
+        unique_consecutive=True,
+        cross_entropy_loss_weights: List[float] = None,
+        mask_prob=0.15
+    ):
+        num_semantic_tokens = semantic_transformer.token_sequences[1].codebook_size
+
+        if exists(wav2vec):
+            assert self.wav2vec.codebook_size == num_semantic_tokens, f'num_semantic_tokens on SemanticTransformer must be set to {self.wav2vec.codebook_size}'
+
+        self.transformer_wrapper = TokenConditionedTransformerWrapper(
+            transformer=semantic_transformer,
+            pad_id=pad_id,
+            unique_consecutive=unique_consecutive,
+            cross_entropy_loss_weights=cross_entropy_loss_weights,
+            mask_prob=mask_prob
+        )
+
+    @eval_decorator
+    @torch.no_grad()
+    @beartype
+    def generate(
+        self,
+        *,
+        max_length,
+        text: Optional[List[str]] = None,
+        text_embeds = None,
+        prime_wave = None,
+        prime_ids = None,
+        batch_size = 1,
+        filter_thres = 0.9,
+        temperature = 1.,
+        include_eos_in_output = True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        **kwargs
+    ):
+        device = self.device
+
+        # derive wav2vec ids from the input wave
+
+        if exists(prime_wave):
+            assert not exists(prime_ids)
+            assert exists(self.wav2vec)
+            ids = self.wav2vec(prime_wave, flatten = False)
+        elif exists(prime_ids):
+            ids = prime_ids
+        else:
+            ids = torch.empty((batch_size, 0), dtype = torch.long, device = device)
+
+        if self.unique_consecutive:
+            ids = batch_unique_consecutive(ids, pad_value = self.pad_id)
+
+        # derive joint audio-text embeddings if needed
+
+        if exists(self.audio_conditioner) and exists(prime_wave):
+            assert not exists(text) and not exists(text_embeds)
+            text_embeds = self.audio_conditioner(wavs = prime_wave, namespace = 'semantic')
+
+        # derive text embeddings if needed
+
+        has_text = exists(text) or exists(text_embeds)
+        assert not (self.transformer.has_condition ^ has_text)
+
+        if not exists(text_embeds) and exists(text):
+            with torch.no_grad():
+                text_embeds = self.transformer.embed_text(text, output_device = device)
+
+        sampled_tokens = self.transformer_wrapper.generate(
+            conditioning_token_ids = ids,
+            max_time_steps=max_length,
+            filter_thres=filter_thres,
+            temperature=temperature,
+            include_eos_in_output=include_eos_in_output,
+            **kwargs
+        )
+
+        return sampled_tokens
+
+    def forward(
+        self,
+        *,
+        semantic_token_ids = None,
+        raw_wave = None,
+        text = None,
+        text_embeds = None,
+        return_loss = False,
+        **kwargs
+    ):
+        pass
+
+
+
 
 @beartype
 class MusicLM(nn.Module):
@@ -414,9 +520,9 @@ class MusicLM(nn.Module):
     ):
         super().__init__()
 
-        assert semantic_transformer.num_semantic_tokens == coarse_transformer.num_semantic_tokens
-        assert coarse_transformer.codebook_size == fine_transformer.codebook_size
-        assert coarse_transformer.num_coarse_quantizers == fine_transformer.num_coarse_quantizers
+        assert semantic_transformer.token_sequences[1].codebook_size == coarse_transformer.token_sequences[1].codebook_size
+        assert coarse_transformer.token_sequences[2].codebook_size == fine_transformer.token_sequences[2].codebook_size
+        assert coarse_transformer.token_sequences[2].num_quantizers == fine_transformer.token_sequences[1].num_quantizers
 
         self.semantic = TokenConditionedTransformerWrapper(
             transformer=semantic_transformer,
