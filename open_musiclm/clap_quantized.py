@@ -159,24 +159,12 @@ def get_audio_features(sample, audio_data, max_len, data_truncating, data_fillin
     return sample
 
 
-tokenize = RobertaTokenizer.from_pretrained('roberta-base')
-
-
-def tokenizer(text):
-    result = tokenize(
-        text,
-        padding="max_length",
-        truncation=True,
-        max_length=77,
-        return_tensors="pt",
-    )
-    return {k: v.squeeze(0) for k, v in result.items()}
-
 @beartype
 class ClapQuantized(nn.Module):
     def __init__(self,
                  *,
                  clap: CLAP,
+                 tokenizer: Optional[RobertaTokenizer] = None,
                  clap_cfg: Dict[str, any],
                  codebook_size: int = 1024,
                  rq_num_quantizers: int = 12,
@@ -186,6 +174,10 @@ class ClapQuantized(nn.Module):
 
         self.clap = clap
         self.clap_cfg = clap_cfg
+
+        if not exists(tokenizer):
+            tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+        self.tokenizer = tokenizer
 
         for param in self.clap.parameters():
             param.requires_grad = False
@@ -199,6 +191,16 @@ class ClapQuantized(nn.Module):
             kmeans_init=True,
             threshold_ema_dead_code=2,
         )
+
+    def tokenize(self, text):
+        result = self.tokenizer(
+            text,
+            padding="max_length",
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        )
+        return {k: v.squeeze(0) for k, v in result.items()}
 
     def forward(self,
                 *,
@@ -222,7 +224,7 @@ class ClapQuantized(nn.Module):
 
                 embedding = self.clap.get_audio_embedding(audio_dicts)
             else:
-                text_input = tokenizer(text_input)
+                text_input = self.tokenize(text_input)
                 embedding = self.clap.get_text_embedding(text_input)
 
         print(embedding.shape)
