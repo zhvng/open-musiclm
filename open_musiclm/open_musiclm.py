@@ -21,6 +21,7 @@ from utils import (all_rows_have_eos_id, append_eos_id,
                    exists, generate_mask_with_prob, get_embeds, gumbel_sample,
                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
 
+Wav2Vec = Union[FairseqVQWav2Vec, HubertWithKmeans]
 
 @dataclass
 class TokenSequenceInfo():
@@ -258,6 +259,12 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         pred_sequence_info, pred_eos_id = self.token_sequences[-1], self.eos_ids[-1]
 
+        for index, sequence_info in enumerate(self.token_sequences[:-1]):
+            if sequence_info.unique_consecutive:
+                conditioning_token_ids[index] = batch_unique_consecutive(
+                    conditioning_token_ids[index], pad_value=self.pad_id)
+        pred_token_ids = batch_unique_consecutive(pred_token_ids, pad_value=self.pad_id)
+
         # initialize
 
         init_pred_time_step = pred_token_ids.shape[-1]
@@ -408,20 +415,49 @@ def create_fine_transformer(dim=512, depth=6, clap_codebook_size=1024, acoustic_
     return TokenConditionedTransformer(token_sequences=[clap_sequence, coarse_sequence, fine_sequence], dim=dim, depth=depth, **kwargs)
 
 
+@beartype
+def get_or_compute_clap_token_ids(clap_token_ids: Optional[torch.Tensor], clap: Optional[ClapQuantized], conditioning_audio: Optional[torch.Tensor], conditioning_text: Optional[List[str]]):
+    if not exists(clap_token_ids):
+        assert exists(conditioning_audio) ^ exists(conditioning_text), "either condition on text or audio"
+        assert exists(clap)
+        if exists(conditioning_text):
+            clap_token_ids = clap(text_input=conditioning_text)
+        else:
+            clap_token_ids = clap(audio_input=conditioning_audio)
+
+    return clap_token_ids
+
+
+@beartype
+def get_or_compute_semantic_token_ids(semantic_token_ids: Optional[torch.Tensor], raw_audio: Optional[torch.Tensor], wav2vec: Optional[Wav2Vec], batch_size: int, device: torch.device):
+    if not exists(semantic_token_ids):
+        if exists(raw_audio):
+            assert exists(wav2vec)
+            semantic_token_ids = wav2vec(raw_audio, flatten=False)
+        else:
+            semantic_token_ids = torch.empty((batch_size, 0), dtype=torch.long, device=device)
+
+    return semantic_token_ids
+
+
+@beartype
 class SemanticStage(nn.Module):
     def __init__(
         self,
         *,
         semantic_transformer: TokenConditionedTransformer,
-
-        wav2vec: Optional[Union[FairseqVQWav2Vec, HubertWithKmeans]] = None,
-        clap: ClapQuantized = None,
-
+        wav2vec: Optional[Wav2Vec] = None,
+        clap: Optional[ClapQuantized] = None,
         pad_id=-1,
         unique_consecutive=True,
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
+
+        self.semantic_transformer = semantic_transformer
+        self.wav2vec = wav2vec
+        self.clap = clap
+
         num_semantic_tokens = semantic_transformer.token_sequences[1].codebook_size
 
         if exists(wav2vec):
@@ -435,57 +471,38 @@ class SemanticStage(nn.Module):
             mask_prob=mask_prob
         )
 
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     @eval_decorator
     @torch.no_grad()
     @beartype
     def generate(
         self,
         *,
-        max_length,
-        text: Optional[List[str]] = None,
-        text_embeds = None,
-        prime_wave = None,
-        prime_ids = None,
-        batch_size = 1,
-        filter_thres = 0.9,
-        temperature = 1.,
-        include_eos_in_output = True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        conditioning_text: Optional[List[str]] = None,
+        conditioning_audio: Optional[torch.Tensor] = None,
+        input_audio: Optional[torch.Tensor] = None,
+        clap_token_ids: Optional[torch.Tensor] = None,
+        semantic_token_ids: Optional[torch.Tensor] = None,
+        batch_size=1,
+        filter_thres=0.9,
+        temperature=1.,
+        max_time_steps=30*25,
+        include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
         **kwargs
     ):
         device = self.device
 
-        # derive wav2vec ids from the input wave
-
-        if exists(prime_wave):
-            assert not exists(prime_ids)
-            assert exists(self.wav2vec)
-            ids = self.wav2vec(prime_wave, flatten = False)
-        elif exists(prime_ids):
-            ids = prime_ids
-        else:
-            ids = torch.empty((batch_size, 0), dtype = torch.long, device = device)
-
-        if self.unique_consecutive:
-            ids = batch_unique_consecutive(ids, pad_value = self.pad_id)
-
-        # derive joint audio-text embeddings if needed
-
-        if exists(self.audio_conditioner) and exists(prime_wave):
-            assert not exists(text) and not exists(text_embeds)
-            text_embeds = self.audio_conditioner(wavs = prime_wave, namespace = 'semantic')
-
-        # derive text embeddings if needed
-
-        has_text = exists(text) or exists(text_embeds)
-        assert not (self.transformer.has_condition ^ has_text)
-
-        if not exists(text_embeds) and exists(text):
-            with torch.no_grad():
-                text_embeds = self.transformer.embed_text(text, output_device = device)
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
+        semantic_token_ids = get_or_compute_semantic_token_ids(
+            semantic_token_ids, input_audio, self.wav2vec, batch_size, device)
 
         sampled_tokens = self.transformer_wrapper.generate(
-            conditioning_token_ids = ids,
-            max_time_steps=max_length,
+            conditioning_token_ids=[clap_token_ids],
+            pred_token_ids=semantic_token_ids,
+            max_time_steps=max_time_steps,
             filter_thres=filter_thres,
             temperature=temperature,
             include_eos_in_output=include_eos_in_output,
@@ -497,14 +514,23 @@ class SemanticStage(nn.Module):
     def forward(
         self,
         *,
-        semantic_token_ids = None,
-        raw_wave = None,
-        text = None,
-        text_embeds = None,
+        input_audio=None,
+        clap_token_ids: Optional[torch.Tensor] = None,
+        semantic_token_ids: Optional[torch.Tensor] = None,
         return_loss = False,
         **kwargs
     ):
-        pass
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
+                                                       conditioning_audio=input_audio, conditioning_text=None)
+        semantic_token_ids = get_or_compute_semantic_token_ids(
+            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch=clap_token_ids.shape[0], device=self.device)
+
+        return self.transformer_wrapper.forward(
+            all_token_ids=[clap_token_ids, semantic_token_ids],
+            return_loss=return_loss,
+            **kwargs
+        )
+
 
 
 
@@ -514,7 +540,7 @@ class MusicLM(nn.Module):
     def __init__(
         self,
         *,
-        wav2vec: Optional[Union[FairseqVQWav2Vec, HubertWithKmeans]],
+        wav2vec: Optional[Wav2Vec] = None,
         clap: ClapQuantized,
         soundstream: SoundStream,
         semantic_transformer: TokenConditionedTransformer,
