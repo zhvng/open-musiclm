@@ -22,6 +22,7 @@ from utils import (all_rows_have_eos_id, append_eos_id,
                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
 
 Wav2Vec = Union[FairseqVQWav2Vec, HubertWithKmeans]
+NeuralCodec = SoundStream
 
 @dataclass
 class TokenSequenceInfo():
@@ -123,7 +124,8 @@ class TokenConditionedTransformer(nn.Module):
                 token_ids = token_ids + offsets
 
             # get embeddings and prepare for next step
-            token_embeddings = get_embeds(embedding, token_ids, pad_id = -1) if sequence.unique_consecutive else embedding(token_ids)
+            token_embeddings = get_embeds(embedding, token_ids, pad_id=-
+                                          1) if sequence.unique_consecutive else embedding(token_ids)
             tokens.append(token_embeddings)
             start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 
@@ -441,6 +443,22 @@ def get_or_compute_semantic_token_ids(semantic_token_ids: Optional[torch.Tensor]
 
 
 @beartype
+def get_or_compute_acoustic_token_ids(coarse_token_ids: Optional[torch.Tensor], fine_token_ids: Optional[torch.Tensor], raw_audio: Optional[torch.Tensor], neural_codec: Optional[NeuralCodec], num_coarse_quantizers: int):
+
+    if exists(raw_audio):
+        assert not exists(coarse_token_ids) and not exists(fine_token_ids), "either provide coarse + fine ids or raw audio"
+        assert exists(neural_codec), 'A neural audio codec must be provided if given raw wave for training'
+
+        with torch.no_grad():
+            neural_codec.eval()
+            _, indices, _ = neural_codec(raw_audio, return_encoded=True)
+            coarse_token_ids, fine_token_ids = indices[...,
+                                                       :num_coarse_quantizers], indices[..., num_coarse_quantizers:]
+
+    return coarse_token_ids, fine_token_ids
+
+
+@beartype
 class SemanticStage(nn.Module):
     def __init__(
         self,
@@ -454,7 +472,6 @@ class SemanticStage(nn.Module):
         mask_prob=0.15
     ):
 
-        self.semantic_transformer = semantic_transformer
         self.wav2vec = wav2vec
         self.clap = clap
 
@@ -517,11 +534,10 @@ class SemanticStage(nn.Module):
         input_audio=None,
         clap_token_ids: Optional[torch.Tensor] = None,
         semantic_token_ids: Optional[torch.Tensor] = None,
-        return_loss = False,
+        return_loss=False,
         **kwargs
     ):
-        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
-                                                       conditioning_audio=input_audio, conditioning_text=None)
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, input_audio, conditioning_text=None)
         semantic_token_ids = get_or_compute_semantic_token_ids(
             semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch=clap_token_ids.shape[0], device=self.device)
 
@@ -532,7 +548,196 @@ class SemanticStage(nn.Module):
         )
 
 
+@beartype
+class CoarseStage(nn.Module):
+    def __init__(
+        self,
+        *,
+        coarse_transformer: TokenConditionedTransformer,
+        wav2vec: Optional[Wav2Vec] = None,
+        clap: Optional[ClapQuantized] = None,
+        neural_codec: Optional[NeuralCodec] = None,
+        pad_id=-1,
+        unique_consecutive=True,
+        cross_entropy_loss_weights: List[float] = None,
+        mask_prob=0.15
+    ):
 
+        self.wav2vec = wav2vec
+        self.clap = clap
+        self.neural_codec = neural_codec
+
+        num_semantic_tokens = coarse_transformer.token_sequences[1].codebook_size
+
+        if exists(wav2vec):
+            assert self.wav2vec.codebook_size == num_semantic_tokens, f'num_semantic_tokens on CoarseTransformer must be set to {self.wav2vec.codebook_size}'
+
+        self.num_coarse_quantizers = coarse_transformer.token_sequences[-1].num_quantizers
+
+        self.transformer_wrapper = TokenConditionedTransformerWrapper(
+            transformer=coarse_transformer,
+            pad_id=pad_id,
+            unique_consecutive=unique_consecutive,
+            cross_entropy_loss_weights=cross_entropy_loss_weights,
+            mask_prob=mask_prob
+        )
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
+    @eval_decorator
+    @torch.no_grad()
+    @beartype
+    def generate(
+        self,
+        *,
+        semantic_token_ids: torch.Tensor,
+        conditioning_text: Optional[List[str]] = None,
+        conditioning_audio: Optional[torch.Tensor] = None,
+        clap_token_ids: Optional[torch.Tensor] = None,
+        filter_thres=0.9,
+        temperature=1.,
+        max_time_steps=10*600,
+        include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        **kwargs
+    ):
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
+        coarse_token_ids = None
+
+        sampled_tokens = self.transformer_wrapper.generate(
+            conditioning_token_ids=[clap_token_ids, semantic_token_ids],
+            pred_token_ids=coarse_token_ids,
+            max_time_steps=max_time_steps,
+            filter_thres=filter_thres,
+            temperature=temperature,
+            include_eos_in_output=include_eos_in_output,
+            **kwargs
+        )
+
+        return sampled_tokens
+
+    def forward(
+        self,
+        *,
+        input_audio=None,
+        clap_token_ids: Optional[torch.Tensor] = None,
+        semantic_token_ids: Optional[torch.Tensor] = None,
+        coarse_token_ids: Optional[torch.Tensor] = None,
+        return_loss=False,
+        **kwargs
+    ):
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
+                                                       conditioning_audio=input_audio, conditioning_text=None)
+        semantic_token_ids = get_or_compute_semantic_token_ids(
+            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch=clap_token_ids.shape[0], device=self.device)
+
+        coarse_token_ids, _ = get_or_compute_acoustic_token_ids(
+            coarse_token_ids=coarse_token_ids,
+            fine_token_ids=None,
+            raw_audio=input_audio,
+            neural_codec=self.neural_codec,
+            num_coarse_quantizers=self.num_coarse_quantizers
+        )
+
+        return self.transformer_wrapper.forward(
+            all_token_ids=[clap_token_ids, semantic_token_ids, coarse_token_ids],
+            return_loss=return_loss,
+            **kwargs
+        )
+
+
+@beartype
+class FineStage(nn.Module):
+    def __init__(
+        self,
+        *,
+        fine_transformer: TokenConditionedTransformer,
+        wav2vec: Optional[Wav2Vec] = None,
+        clap: Optional[ClapQuantized] = None,
+        neural_codec: Optional[NeuralCodec] = None,
+        pad_id=-1,
+        unique_consecutive=True,
+        cross_entropy_loss_weights: List[float] = None,
+        mask_prob=0.15
+    ):
+
+        self.wav2vec = wav2vec
+        self.clap = clap
+        self.neural_codec = neural_codec
+
+        self.num_coarse_quantizers = fine_transformer.token_sequences[1].num_quantizers
+
+        self.transformer_wrapper = TokenConditionedTransformerWrapper(
+            transformer=fine_transformer,
+            pad_id=pad_id,
+            unique_consecutive=unique_consecutive,
+            cross_entropy_loss_weights=cross_entropy_loss_weights,
+            mask_prob=mask_prob
+        )
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
+    @eval_decorator
+    @torch.no_grad()
+    @beartype
+    def generate(
+        self,
+        *,
+        coarse_token_ids: torch.Tensor,
+        conditioning_text: Optional[List[str]] = None,
+        conditioning_audio: Optional[torch.Tensor] = None,
+        clap_token_ids: Optional[torch.Tensor] = None,
+        filter_thres=0.9,
+        temperature=1.,
+        max_time_steps=3*600,
+        include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        **kwargs
+    ):
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
+        fine_token_ids = None
+
+        sampled_tokens = self.transformer_wrapper.generate(
+            conditioning_token_ids=[clap_token_ids, coarse_token_ids],
+            pred_token_ids=fine_token_ids,
+            max_time_steps=max_time_steps,
+            filter_thres=filter_thres,
+            temperature=temperature,
+            include_eos_in_output=include_eos_in_output,
+            **kwargs
+        )
+
+        return sampled_tokens
+
+    def forward(
+        self,
+        *,
+        input_audio=None,
+        clap_token_ids: Optional[torch.Tensor] = None,
+        coarse_token_ids: Optional[torch.Tensor] = None,
+        fine_token_ids: Optional[torch.Tensor] = None,
+        return_loss=False,
+        **kwargs
+    ):
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
+                                                       conditioning_audio=input_audio, conditioning_text=None)
+
+        coarse_token_ids, fine_token_ids = get_or_compute_acoustic_token_ids(
+            coarse_token_ids=coarse_token_ids,
+            fine_token_ids=fine_token_ids,
+            raw_audio=input_audio,
+            neural_codec=self.neural_codec,
+            num_coarse_quantizers=self.num_coarse_quantizers
+        )
+        assert exists(coarse_token_ids) and exists(fine_token_ids)
+
+        return self.transformer_wrapper.forward(
+            all_token_ids=[clap_token_ids, coarse_token_ids, fine_token_ids],
+            return_loss=return_loss,
+            **kwargs
+        )
 
 
 @beartype
