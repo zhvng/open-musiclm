@@ -43,9 +43,8 @@ def infer_text(clap_wrapper):
                  'future',
                  'metro boomin']
     # tokenize for roberta, if you want to tokenize for another text encoder, please refer to data.py#L43-90
-    text_data = tokenizer(text_data)
 
-    text_embed = clap_wrapper(text_embed = text_data)
+    text_embed = clap_wrapper(text_input=text_data)
 
     return text_embed
 

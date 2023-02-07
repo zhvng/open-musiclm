@@ -1,16 +1,16 @@
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
-from beartype import beartype
-from beartype.typing import List, Optional, Union, Dict
-from clap import CLAP
-from vector_quantize_pytorch import ResidualVQ
-from einops import rearrange
 import torchaudio
 import torchvision.transforms
-
+from beartype import beartype
+from beartype.typing import Dict, List, Optional, Union
+from clap import CLAP
+from einops import rearrange
+from torch import nn
+from transformers import RobertaTokenizer
 from utils import exists
+from vector_quantize_pytorch import ResidualVQ
 
 
 def get_mel(audio_data, audio_cfg):
@@ -158,6 +158,20 @@ def get_audio_features(sample, audio_data, max_len, data_truncating, data_fillin
 
     return sample
 
+
+tokenize = RobertaTokenizer.from_pretrained('roberta-base')
+
+
+def tokenizer(text):
+    result = tokenize(
+        text,
+        padding="max_length",
+        truncation=True,
+        max_length=77,
+        return_tensors="pt",
+    )
+    return {k: v.squeeze(0) for k, v in result.items()}
+
 @beartype
 class ClapQuantized(nn.Module):
     def __init__(self,
@@ -188,14 +202,14 @@ class ClapQuantized(nn.Module):
 
     def forward(self,
                 *,
-                audio_input: Optional[List[torch.Tensor]] = None,
-                text_embed: Optional[Dict] = None,
+                audio_input: Optional[Union[List[torch.Tensor], torch.Tensor]] = None,
+                text_input: Optional[List[str]] = None,
                 ):
         """
         Wrapper for clap module that takes in audio or text and returns the quantized embedding from the respective tower
         """
 
-        assert exists(audio_input) ^ exists(text_embed), "either audio or text must be provided, but not both"
+        assert exists(audio_input) ^ exists(text_input), "either audio or text must be provided, but not both"
 
         with torch.no_grad():
             self.clap.eval()
@@ -208,7 +222,8 @@ class ClapQuantized(nn.Module):
 
                 embedding = self.clap.get_audio_embedding(audio_dicts)
             else:
-                embedding = self.clap.get_text_embedding(text_embed)
+                text_input = tokenizer(text_input)
+                embedding = self.clap.get_text_embedding(text_input)
 
         print(embedding.shape)
 
