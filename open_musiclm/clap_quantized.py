@@ -164,8 +164,8 @@ class ClapQuantized(nn.Module):
     def __init__(self,
                  *,
                  clap: CLAP,
-                 tokenizer: Optional[RobertaTokenizer] = None,
                  clap_cfg: Dict[str, any],
+                 tokenizer: Optional[RobertaTokenizer] = None,
                  codebook_size: int = 1024,
                  rq_num_quantizers: int = 12,
                  rq_ema_decay: float = 0.95,
@@ -226,8 +226,6 @@ class ClapQuantized(nn.Module):
             else:
                 text_input = self.tokenize(text_input)
                 embedding = self.clap.get_text_embedding(text_input)
-
-        print(embedding.shape)
 
         _, indices, _ = self.rq(rearrange(embedding, 'n c -> 1 n c'))
 
