@@ -15,7 +15,8 @@ if __name__ == "__main__":
     wav, sr = torchaudio.load("/u/zhvng/projects/audio_files/jumpman.mp3")
     wav = convert_audio(wav, sr, model.sample_rate, model.channels)
     print(model.channels, model.sample_rate, model.quantizer.bins)
-    wav = wav.unsqueeze(0)
+    print(model.segment_stride)
+    wav = torch.stack([wav, wav], dim=0)
 
     # Extract discrete codes from EnCodec
     with torch.no_grad():
@@ -30,4 +31,4 @@ if __name__ == "__main__":
     new_encoded_frames = [(encoded[0], None) for encoded in encoded_frames]
 
     wave = model.decode(new_encoded_frames)
-    torchaudio.save('test.wav', wave.squeeze(0), model.sample_rate)
+    torchaudio.save('test.wav', wave[0], model.sample_rate)

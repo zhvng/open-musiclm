@@ -19,23 +19,35 @@ from encodec.utils import convert_audio
 class EncodecWrapper(nn.Module):
     def __init__(self,
                  *,
-                 encodec: EncodecModel
+                 encodec: Optional[EncodecModel] = None
                  ):
         super().__init__()
 
+        if not exists(encodec):
+            encodec = EncodecModel.encodec_model_24khz()
+
         self.encodec = encodec
 
-    def encode(self, *, wav: torch.Tensor):
+    def forward(self, x: torch.Tensor, return_encoded = True, **kwargs):
+        assert return_encoded == True
 
         with torch.no_grad():
             self.encodec.eval()
-            encoded_frames = self.encodec.encode(wav)
-        # codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)  # [B, n_q, T]
+            encoded_frames = self.encodec.encode(x)
+        codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)  # [B, n_q, T]
+        codes = rearrange(codes, 'b n_q t -> b t n_q')
 
-        return encoded_frames
+        return codes # [B, T, n_q]
 
-    def decode(self, *, encoded_frames):
+    def decode_from_codebook_indices(self, quantized_indices):
+        """
+        Args:
+            quantized_indices: [B, T, n_q]
+        """
+        quantized_indices = rearrange(quantized_indices, 'b t n_q -> b n_q t')
+
+        frames = [(quantized_indices, None)] # 1 frame for now
         with torch.no_grad():
             self.encodec.eval()
-            wave = self.encodec.decode(encoded_frames)
+            wave = self.encodec.decode(frames)
         return wave
