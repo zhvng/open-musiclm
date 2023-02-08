@@ -106,12 +106,12 @@ if __name__ == "__main__":
         fusion_type=fusion_type,
     )
 
-    clap_wrapper = ClapQuantized(clap = model, clap_cfg = model_cfg)
+    clap_wrapper = ClapQuantized(clap=model, clap_cfg=model_cfg)
     clap_wrapper = clap_wrapper.to(device)
 
     text_embeds = infer_text(clap_wrapper)
     audio_embed = infer_audio(clap_wrapper)
-    
+
     print(text_embeds)
     print(text_embeds.size())
 
