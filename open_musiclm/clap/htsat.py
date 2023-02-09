@@ -18,8 +18,8 @@ import torch.utils.checkpoint as checkpoint
 
 import random
 
-from torchlibrosa.stft import Spectrogram, LogmelFilterBank
-from torchlibrosa.augmentation import SpecAugmentation
+# from torchlibrosa.stft import Spectrogram, LogmelFilterBank
+# from torchlibrosa.augmentation import SpecAugmentation
 
 from itertools import repeat
 from .utils import do_mixup, interpolate
@@ -672,17 +672,17 @@ class HTSAT_Swin_Transformer(nn.Module):
         amin = 1e-10
         top_db = None
         self.interpolate_ratio = 32     # Downsampled ratio
-        # Spectrogram extractor
-        self.spectrogram_extractor = Spectrogram(n_fft=config.window_size, hop_length=config.hop_size, 
-            win_length=config.window_size, window=window, center=center, pad_mode=pad_mode, 
-            freeze_parameters=True)
-        # Logmel feature extractor
-        self.logmel_extractor = LogmelFilterBank(sr=config.sample_rate, n_fft=config.window_size, 
-            n_mels=config.mel_bins, fmin=config.fmin, fmax=config.fmax, ref=ref, amin=amin, top_db=top_db, 
-            freeze_parameters=True)
-        # Spec augmenter
-        self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
-            freq_drop_width=8, freq_stripes_num=2) # 2 2
+        # # Spectrogram extractor
+        # self.spectrogram_extractor = Spectrogram(n_fft=config.window_size, hop_length=config.hop_size, 
+        #     win_length=config.window_size, window=window, center=center, pad_mode=pad_mode, 
+        #     freeze_parameters=True)
+        # # Logmel feature extractor
+        # self.logmel_extractor = LogmelFilterBank(sr=config.sample_rate, n_fft=config.window_size, 
+        #     n_mels=config.mel_bins, fmin=config.fmin, fmax=config.fmax, ref=ref, amin=amin, top_db=top_db, 
+        #     freeze_parameters=True)
+        # # Spec augmenter
+        # self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
+        #     freq_drop_width=8, freq_stripes_num=2) # 2 2
         self.bn0 = nn.BatchNorm2d(self.config.mel_bins)
 
 
@@ -870,20 +870,21 @@ class HTSAT_Swin_Transformer(nn.Module):
             x["longer"][torch.randint(0, x["longer"].shape[0], (1,))] = True
 
         if not self.enable_fusion:
-            x = x["waveform"].to(device=device, non_blocking=True)
-            x = self.spectrogram_extractor(x)   # (batch_size, 1, time_steps, freq_bins)
-            x = self.logmel_extractor(x)    # (batch_size, 1, time_steps, mel_bins)
-            x = x.transpose(1, 3)
-            x = self.bn0(x)
-            x = x.transpose(1, 3)
-            if self.training:
-                x = self.spec_augmenter(x)
+            raise NotImplementedError
+            # x = x["waveform"].to(device=device, non_blocking=True)
+            # x = self.spectrogram_extractor(x)   # (batch_size, 1, time_steps, freq_bins)
+            # x = self.logmel_extractor(x)    # (batch_size, 1, time_steps, mel_bins)
+            # x = x.transpose(1, 3)
+            # x = self.bn0(x)
+            # x = x.transpose(1, 3)
+            # if self.training:
+            #     x = self.spec_augmenter(x)
 
-            if self.training and mixup_lambda is not None:
-                x = do_mixup(x, mixup_lambda)
+            # if self.training and mixup_lambda is not None:
+            #     x = do_mixup(x, mixup_lambda)
                 
-            x = self.reshape_wav2img(x)
-            output_dict = self.forward_features(x)
+            # x = self.reshape_wav2img(x)
+            # output_dict = self.forward_features(x)
         else:
             longer_list = x["longer"].to(device=device, non_blocking=True)
             x = x["mel_fusion"].to(device=device, non_blocking=True)
