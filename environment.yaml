@@ -21,3 +21,4 @@ dependencies:
     - tqdm
     - transformers
     - encodec==0.1.1
+    - gdown
