@@ -1,7 +1,5 @@
 import itertools
 from dataclasses import dataclass
-from typing import List, Optional, Union
-
 import torch
 import torch.nn.functional as F
 import tqdm
@@ -20,9 +18,7 @@ from utils import (all_rows_have_eos_id, append_eos_id,
                    batch_unique_consecutive, ceil_div, default, eval_decorator,
                    exists, generate_mask_with_prob, get_embeds, gumbel_sample,
                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
-
-Wav2Vec = Union[FairseqVQWav2Vec, HubertWithKmeans]
-NeuralCodec = SoundStream
+from model_types import Wav2Vec, NeuralCodec 
 
 @dataclass
 class TokenSequenceInfo():
@@ -653,7 +649,6 @@ class FineStage(nn.Module):
         self,
         *,
         fine_transformer: TokenConditionedTransformer,
-        wav2vec: Optional[Wav2Vec] = None,
         clap: Optional[ClapQuantized] = None,
         neural_codec: Optional[NeuralCodec] = None,
         pad_id=-1,
@@ -662,7 +657,6 @@ class FineStage(nn.Module):
         mask_prob=0.15
     ):
 
-        self.wav2vec = wav2vec
         self.clap = clap
         self.neural_codec = neural_codec
 
