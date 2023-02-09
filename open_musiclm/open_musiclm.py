@@ -61,8 +61,11 @@ class TokenConditionedTransformer(nn.Module):
         self.has_condition = has_condition
         self.cond_drop_prob = cond_drop_prob
 
-        self.start_tokens, self.eos_ids, self.embeddings, self.logit_weights = [], [], [], []
-
+        self.start_tokens = torch.nn.ParameterList()
+        self.logit_weights = torch.nn.ParameterList()
+        self.embeddings = torch.nn.ModuleList()
+        self.eos_ids = []
+        
         for sequence in token_sequences:
             self.start_tokens.append(nn.Parameter(torch.randn(dim)))
             self.eos_ids.append(sequence.codebook_size)
@@ -104,7 +107,7 @@ class TokenConditionedTransformer(nn.Module):
 
         b, device = all_token_ids[0].shape[0], self.device
 
-        all_token_ids = map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids)
+        all_token_ids = list(map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids))
 
         assert len(all_token_ids) == len(self.token_sequences) == len(self.embeddings)
 
@@ -121,12 +124,11 @@ class TokenConditionedTransformer(nn.Module):
                 token_ids = token_ids + offsets
 
             # get embeddings and prepare for next step
-            token_embeddings = get_embeds(embedding, token_ids, pad_id=-
-                                          1) if sequence.unique_consecutive else embedding(token_ids)
+            token_embeddings = get_embeds(embedding, token_ids, pad_id=-1) if sequence.unique_consecutive else embedding(token_ids)
             tokens.append(token_embeddings)
             start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 
-            n_tokens = token_embeddings.shape[1]
+            n_tokens = token_embeddings.shape[1] + 1 # +1 for end token
             split_at.append(n_tokens if len(split_at) == 0 else split_at[-1] + n_tokens)
 
         tokens = list(itertools.chain(*zip(start_tokens, tokens)))  # [start_1, tokens_1, start_2, tokens_2, ...]
@@ -135,9 +137,10 @@ class TokenConditionedTransformer(nn.Module):
         tokens = self.transformer(tokens, self_attn_mask=self_attn_mask)
 
         split_at = split_at[:-1]  # remove last element (total number of tokens)
+        all_pred_tokens = torch.tensor_split(tokens, split_at, dim=1)
 
-        all_pred_tokens = torch.tensor_split(
-            tokens, [sequence.num_quantizers for sequence in self.token_sequences], dim=1)
+        # strip eos token from all sequences
+        all_pred_tokens = [pred_tokens[:, :-1] for pred_tokens in all_pred_tokens]
 
         # get logits
 
@@ -309,7 +312,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         batch, device = all_token_ids[0].shape[0], self.device
 
-        all_token_ids = map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids)
+        all_token_ids = list(map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids))
 
         if self.training:
             all_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(all_token_ids, self.eos_ids)]
@@ -320,10 +323,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
                     all_token_ids[index] = batch_unique_consecutive(all_token_ids[index], pad_value=self.pad_id)
 
         if return_loss:
-            all_labels = [ids for ids in all_token_ids[:-1]]
-            all_labels[-1] = all_token_ids[-1].clone()
-
-            all_token_ids[-1] = all_token_ids[-1][:, :-1]  # don't include eos in loss
+            all_labels = [ids.clone() for ids in all_token_ids]
+            # all_token_ids[-1] = all_token_ids[-1][:, :-1]  # don't include eos in loss
 
         # do not attend to padding tokens or eos tokens
         combined_self_attn_mask = torch.empty((batch, 0), device=device, dtype=torch.bool)
@@ -356,11 +357,11 @@ class TokenConditionedTransformerWrapper(nn.Module):
         if not return_loss:
             return all_logits
 
-        all_logits = map(lambda t: rearrange(t, 'b n c -> b c n'), all_logits)
+        all_logits = list(map(lambda t: rearrange(t, 'b n c -> b c n'), all_logits))
 
         total_logits = 0
         running_loss = 0.
-        for logits, labels, num_all_logits, cross_entropy_loss_weight, sequence_info in zip(all_logits, all_labels, num_all_logits, self.cross_entropy_loss_weights, self.token_sequences):
+        for logits, labels, cross_entropy_loss_weight, sequence_info in zip(all_logits, all_labels, self.cross_entropy_loss_weights, self.token_sequences):
             loss = 0.
             num_logits = 0
             unique_consecutive = sequence_info.unique_consecutive and self.unique_consecutive
@@ -371,7 +372,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
                 loss = F.cross_entropy(
                     logits,
                     labels,
-                    ignore_index=self.pad_id if unique_consecutive else None
+                    ignore_index=self.pad_id if unique_consecutive else -100 
                 )
 
             total_logits += num_logits
@@ -537,7 +538,7 @@ class SemanticStage(nn.Module):
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, input_audio, conditioning_text=None)
         semantic_token_ids = get_or_compute_semantic_token_ids(
-            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch=clap_token_ids.shape[0], device=self.device)
+            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch_size=clap_token_ids.shape[0], device=self.device)
 
         return self.transformer_wrapper.forward(
             all_token_ids=[clap_token_ids, semantic_token_ids],
@@ -629,7 +630,7 @@ class CoarseStage(nn.Module):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
                                                        conditioning_audio=input_audio, conditioning_text=None)
         semantic_token_ids = get_or_compute_semantic_token_ids(
-            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch=clap_token_ids.shape[0], device=self.device)
+            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch_size=clap_token_ids.shape[0], device=self.device)
 
         coarse_token_ids, _ = get_or_compute_acoustic_token_ids(
             coarse_token_ids=coarse_token_ids,
