@@ -208,12 +208,15 @@ class ClapQuantized(nn.Module):
                 *,
                 audio_input: Optional[Union[List[torch.Tensor], torch.Tensor]] = None,
                 text_input: Optional[List[str]] = None,
+                return_embedding: Optional[bool] = False,
                 ):
         """
         Wrapper for clap module that takes in audio or text and returns the quantized embedding from the respective tower
         """
 
         assert exists(audio_input) ^ exists(text_input), "either audio or text must be provided, but not both"
+        if exists(audio_input):
+            assert all(wave.dim() == 1 for wave in audio_input)
 
         with torch.no_grad():
             self.clap.eval()
@@ -228,6 +231,9 @@ class ClapQuantized(nn.Module):
             else:
                 text_input = self.tokenize(text_input)
                 embedding = self.clap.get_text_embedding(text_input)
+
+        if return_embedding:
+            return embedding
 
         _, indices, _ = self.rq(rearrange(embedding, 'n c -> 1 n c'))
 

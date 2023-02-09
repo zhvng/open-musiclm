@@ -1,7 +1,8 @@
 import os
 import sys
 
-import librosa
+import torchaudio
+from torchaudio.functional import resample
 import numpy as np
 import torch
 from transformers import RobertaTokenizer
@@ -11,20 +12,20 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from open_musiclm.clap import create_model
 from open_musiclm.clap_quantized import ClapQuantized
 
-tokenize = RobertaTokenizer.from_pretrained('roberta-base')
+# tokenize = RobertaTokenizer.from_pretrained('roberta-base')
 
-def tokenizer(text):
-    result = tokenize(
-        text,
-        padding="max_length",
-        truncation=True,
-        max_length=77,
-        return_tensors="pt",
-    )
-    return {k: v.squeeze(0) for k, v in result.items()}
+# def tokenizer(text):
+#     result = tokenize(
+#         text,
+#         padding="max_length",
+#         truncation=True,
+#         max_length=77,
+#         return_tensors="pt",
+#     )
+#     return {k: v.squeeze(0) for k, v in result.items()}
 
 
-def infer_text(clap_wrapper):
+def infer_text(clap_wrapper, return_embedding=False):
 
     # load the text, can be a list (i.e. batch size)
     # text_data = ["air horn",
@@ -47,30 +48,37 @@ def infer_text(clap_wrapper):
                  'metro boomin']
     # tokenize for roberta, if you want to tokenize for another text encoder, please refer to data.py#L43-90
 
-    text_embed = clap_wrapper(text_input=text_data)
+    text_embed = clap_wrapper(text_input=text_data, return_embedding=return_embedding)
 
     return text_embed
 
 
 def int16_to_float32(x):
-    return (x / 32767.0).astype(np.float32)
+    return (x / 32767.0).type(torch.float32)
 
 
 def float32_to_int16(x):
-    x = np.clip(x, a_min=-1., a_max=1.)
-    return (x * 32767.).astype(np.int16)
+    x = torch.clamp(x, min=-1., max=1.)
+    return (x * 32767.).type(torch.int16)
 
 
-def infer_audio(clap_wrapper: ClapQuantized):
+def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False):
 
     print('inferring audio...')
 
     # load the waveform of the shape (T,), should resample to 48000
-    audio_waveform, sr = librosa.load(
-        '/u/zhvng/projects/audio_files/jumpman.mp3', sr=48000)
+    audio_waveform, sr = torchaudio.load('/u/zhvng/projects/audio_files/jumpman.mp3')
+
+    if audio_waveform.shape[0] > 1:
+        # the audio has more than 1 channel, convert to mono
+        audio_waveform = torch.mean(audio_waveform, dim=0, keepdim=True)
+
+    # print(audio_waveform.shape, sr)
+    audio_waveform = resample(audio_waveform, sr, 48000)
+    # audio_waveform = audio_waveform.squeeze(0)
     # quantize
     audio_waveform = int16_to_float32(float32_to_int16(audio_waveform))
-    audio_waveform = torch.from_numpy(audio_waveform).float()
+    # audio_waveform = torch.from_numpy(audio_waveform).float()
 
     # audio_dict = {}
 
@@ -82,7 +90,7 @@ def infer_audio(clap_wrapper: ClapQuantized):
     #     audio_cfg=clap_wrapper.clap_cfg['audio_cfg']
     # )
 
-    audio_embed = clap_wrapper(audio_input=[audio_waveform])
+    audio_embed = clap_wrapper(audio_input=audio_waveform, return_embedding=return_embedding)
 
     return audio_embed
 
@@ -112,8 +120,8 @@ if __name__ == "__main__":
     clap_wrapper = ClapQuantized(clap=model, clap_cfg=model_cfg)
     clap_wrapper = clap_wrapper.to(device)
 
-    text_embeds = infer_text(clap_wrapper)
-    audio_embed = infer_audio(clap_wrapper)
+    text_embeds = infer_text(clap_wrapper, return_embedding=True)
+    audio_embed = infer_audio(clap_wrapper, return_embedding=True)
 
     print(text_embeds)
     print(text_embeds.size())
