@@ -114,10 +114,7 @@ class SingleStageTrainer(nn.Module):
         save_results_every=100,
         save_model_every=1000,
         results_folder='./results',
-        accelerate_kwargs: dict = {
-            'log_with': "tensorboard",
-            'project_dir': './semantic_logs',
-        }
+        accelerate_kwargs: dict = {}
     ):
         super().__init__()
         self.accelerator = Accelerator(**accelerate_kwargs)

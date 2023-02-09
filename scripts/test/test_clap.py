@@ -62,7 +62,7 @@ def float32_to_int16(x):
     return (x * 32767.).type(torch.int16)
 
 
-def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False):
+def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False, device: str = 'cuda'):
 
     print('inferring audio...')
 
@@ -90,7 +90,7 @@ def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False):
     #     audio_cfg=clap_wrapper.clap_cfg['audio_cfg']
     # )
 
-    audio_embed = clap_wrapper(audio_input=audio_waveform, return_embedding=return_embedding)
+    audio_embed = clap_wrapper(audio_input=audio_waveform.to(device), return_embedding=return_embedding)
 
     return audio_embed
 
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     clap_wrapper = clap_wrapper.to(device)
 
     text_embeds = infer_text(clap_wrapper, return_embedding=True)
-    audio_embed = infer_audio(clap_wrapper, return_embedding=True)
+    audio_embed = infer_audio(clap_wrapper, return_embedding=True, device=device)
 
     print(text_embeds)
     print(text_embeds.size())

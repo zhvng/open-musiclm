@@ -208,7 +208,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         transformer: TokenConditionedTransformer,
         pad_id=-1,
         unique_consecutive=True,
-        cross_entropy_loss_weights: List[float] = None,
+        cross_entropy_loss_weights: Optional[List[float]] = None,
         mask_prob=0.15
     ):
         super().__init__()
@@ -468,6 +468,7 @@ class SemanticStage(nn.Module):
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
+        super().__init__()
 
         self.wav2vec = wav2vec
         self.clap = clap
@@ -559,6 +560,7 @@ class CoarseStage(nn.Module):
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
+        super().__init__()
 
         self.wav2vec = wav2vec
         self.clap = clap
@@ -657,6 +659,7 @@ class FineStage(nn.Module):
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
+        super().__init__()
 
         self.clap = clap
         self.neural_codec = neural_codec
