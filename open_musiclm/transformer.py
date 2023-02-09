@@ -3,12 +3,11 @@
 from functools import partial
 
 import torch
-from torch import nn, einsum
 import torch.nn.functional as F
-
 from einops import rearrange, repeat
+from torch import einsum, nn
 
-from utils import exists, default, grad_shrink
+from .utils import default, exists, grad_shrink
 
 # bias-less layernorm, being used in more recent T5s, PaLM, also in @borisdayma 's experiments shared with me
 # greater stability

@@ -1,7 +1,6 @@
 from functools import partial, wraps
 from pathlib import Path
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torchaudio
@@ -12,8 +11,8 @@ from einops import rearrange
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 from torchaudio.functional import resample
-from utils import curtail_to_multiple 
 
+from .utils import curtail_to_multiple
 
 # helper functions
 

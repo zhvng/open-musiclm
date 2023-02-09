@@ -1,24 +1,25 @@
 import itertools
 from dataclasses import dataclass
+
 import torch
 import torch.nn.functional as F
 import tqdm
-from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans, SoundStream
-from audiolm_pytorch.hubert_kmeans import HubertWithKmeans
-from audiolm_pytorch.t5 import DEFAULT_T5_NAME
-from audiolm_pytorch.vq_wav2vec import FairseqVQWav2Vec
+from audiolm_pytorch import SoundStream
 from beartype import beartype
 from beartype.typing import Dict, List, Optional, Union
-from clap_quantized import ClapQuantized
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from torch import einsum, nn
-from transformer import Transformer
-from utils import (all_rows_have_eos_id, append_eos_id,
-                   batch_unique_consecutive, ceil_div, default, eval_decorator,
-                   exists, generate_mask_with_prob, get_embeds, gumbel_sample,
-                   mask_out_after_eos_id, round_down_nearest_multiple, top_k)
-from model_types import Wav2Vec, NeuralCodec 
+
+from .clap_quantized import ClapQuantized
+from .model_types import NeuralCodec, Wav2Vec
+from .transformer import Transformer
+from .utils import (all_rows_have_eos_id, append_eos_id,
+                    batch_unique_consecutive, ceil_div, default,
+                    eval_decorator, exists, generate_mask_with_prob,
+                    get_embeds, gumbel_sample, mask_out_after_eos_id,
+                    round_down_nearest_multiple, top_k)
+
 
 @dataclass
 class TokenSequenceInfo():

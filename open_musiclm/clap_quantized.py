@@ -5,12 +5,13 @@ import torchaudio
 import torchvision.transforms
 from beartype import beartype
 from beartype.typing import Dict, List, Optional, Union
-from clap import CLAP
 from einops import rearrange
 from torch import nn
 from transformers import RobertaTokenizer
-from utils import exists
 from vector_quantize_pytorch import ResidualVQ
+
+from .clap import CLAP, create_model
+from .utils import exists
 
 
 def get_mel(audio_data, audio_cfg):
@@ -174,6 +175,7 @@ class ClapQuantized(nn.Module):
 
         self.clap = clap
         self.clap_cfg = clap_cfg
+        self.codebook_size = codebook_size
 
         if not exists(tokenizer):
             tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
@@ -230,3 +232,29 @@ class ClapQuantized(nn.Module):
         _, indices, _ = self.rq(rearrange(embedding, 'n c -> 1 n c'))
 
         return indices
+
+
+def create_clap_quantized(device, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt"):
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    precision = 'fp32'
+    amodel = 'HTSAT-tiny'  # or 'PANN-14'
+    tmodel = 'roberta'  # the best text encoder in our training
+    enable_fusion = True  # False if you do not want to use the fusion model
+    fusion_type = 'aff_2d'
+    # the checkpoint name, the unfusion model can also be loaded.
+    pretrained = checkpoint_path
+
+    model, model_cfg = create_model(
+        amodel,
+        tmodel,
+        pretrained,
+        precision=precision,
+        device=device,
+        enable_fusion=enable_fusion,
+        fusion_type=fusion_type,
+    )
+
+    clap = ClapQuantized(clap=model, clap_cfg=model_cfg)
+
+    return clap

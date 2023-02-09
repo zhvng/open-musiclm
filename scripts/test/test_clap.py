@@ -1,14 +1,17 @@
 import os
-import torch
-import librosa
+import sys
 
+import librosa
 import numpy as np
-from clap import create_model
+import torch
 from transformers import RobertaTokenizer
-from clap_quantized import ClapQuantized
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from open_musiclm.clap import create_model
+from open_musiclm.clap_quantized import ClapQuantized
 
 tokenize = RobertaTokenizer.from_pretrained('roberta-base')
-
 
 def tokenizer(text):
     result = tokenize(

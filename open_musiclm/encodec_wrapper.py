@@ -1,18 +1,16 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchaudio
-import torchvision.transforms
 from beartype import beartype
-from beartype.typing import Dict, List, Optional, Union, Literal
-from clap import CLAP
+from beartype.typing import Dict, List, Literal, Optional, Union
 from einops import rearrange
-from torch import nn
-from transformers import RobertaTokenizer
-from utils import exists
-from vector_quantize_pytorch import ResidualVQ
 from encodec import EncodecModel
 from encodec.utils import convert_audio
+from torch import nn
+from transformers import RobertaTokenizer
+from vector_quantize_pytorch import ResidualVQ
+
+from .utils import exists
 
 
 @beartype

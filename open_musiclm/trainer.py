@@ -1,38 +1,36 @@
 import itertools
 from dataclasses import dataclass
-from typing import List, Optional, Union
-
+from pathlib import Path
+from shutil import rmtree
 import torch
 import torch.nn.functional as F
 import tqdm
 from accelerate import Accelerator, DistributedType
 from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans, SoundStream
 from audiolm_pytorch.hubert_kmeans import HubertWithKmeans
+from audiolm_pytorch.optimizer import get_optimizer
 from audiolm_pytorch.t5 import DEFAULT_T5_NAME
 from audiolm_pytorch.vq_wav2vec import FairseqVQWav2Vec
 from beartype import beartype
-from beartype.typing import Dict, List, Optional, Union, Literal
-from clap_quantized import ClapQuantized
+from beartype.door import is_bearable
+from beartype.typing import Dict, List, Literal, Optional, Union
+from beartype.vale import Is
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
-from model_types import NeuralCodec, Wav2Vec
 from torch import einsum, nn
 from torch.utils.data import DataLoader, Dataset, random_split
-from utils import (all_rows_have_eos_id, append_eos_id,
-                   batch_unique_consecutive, ceil_div, default, eval_decorator,
-                   exists, generate_mask_with_prob, get_embeds, gumbel_sample,
-                   mask_out_after_eos_id, round_down_nearest_multiple, top_k)
-
-from .open_musiclm import SemanticStage, CoarseStage, FineStage, TokenConditionedTransformer
-from audiolm_pytorch.optimizer import get_optimizer
-from data import SoundDataset, get_dataloader
-from pathlib import Path
-from shutil import rmtree
-
-from beartype import beartype
-from beartype.door import is_bearable
-from beartype.vale import Is
 from typing_extensions import Annotated
+
+from .clap_quantized import ClapQuantized
+from .data import SoundDataset, get_dataloader
+from .model_types import NeuralCodec, Wav2Vec
+from .open_musiclm import (CoarseStage, FineStage, SemanticStage,
+                           TokenConditionedTransformer)
+from .utils import (all_rows_have_eos_id, append_eos_id,
+                    batch_unique_consecutive, ceil_div, default,
+                    eval_decorator, exists, generate_mask_with_prob,
+                    get_embeds, gumbel_sample, mask_out_after_eos_id,
+                    round_down_nearest_multiple, top_k)
 
 # for automatically routing data emitted from a dataset to keywords of the transformer wrappers
 
