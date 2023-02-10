@@ -17,17 +17,22 @@ from .utils import exists
 class EncodecWrapper(nn.Module):
     def __init__(self,
                  *,
-                 encodec: Optional[EncodecModel] = None
+                 encodec: EncodecModel,
                  ):
         super().__init__()
 
-        if not exists(encodec):
-            encodec = EncodecModel.encodec_model_24khz()
-
         self.encodec = encodec
+        self.sample_rate = encodec.sample_rate
+
+        assert exists(encodec.bandwidth)
+        total_quantizers = encodec.quantizer.n_q
+        self.num_quantizers = int(encodec.bandwidth / 24 * total_quantizers) # output quantizers per frame
 
     def forward(self, x: torch.Tensor, return_encoded = True, **kwargs):
         assert return_encoded == True
+
+        if x.dim() == 2:
+            x = rearrange(x, 'b t -> b 1 t') # add in "mono" dimension
 
         with torch.no_grad():
             self.encodec.eval()
@@ -35,7 +40,7 @@ class EncodecWrapper(nn.Module):
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)  # [B, n_q, T]
         codes = rearrange(codes, 'b n_q t -> b t n_q')
 
-        return codes # [B, T, n_q]
+        return None, codes, None # [B, T, n_q]
 
     def decode_from_codebook_indices(self, quantized_indices):
         """
@@ -49,3 +54,15 @@ class EncodecWrapper(nn.Module):
             self.encodec.eval()
             wave = self.encodec.decode(frames)
         return wave
+
+def create_encodec_24khz(bandwidth: float = 6.0):
+    """
+    Create a pretrained EnCodec model.
+    Args:
+        bandwidth: float, target bandwidth in kHz"""
+    assert bandwidth in [1.5, 3., 6., 12., 24.]
+
+    encodec = EncodecModel.encodec_model_24khz()
+    encodec.set_target_bandwidth(bandwidth)
+    encodec_wrapper = EncodecWrapper(encodec=encodec)
+    return encodec_wrapper

@@ -9,12 +9,12 @@ if __name__ == "__main__":
 
     # Instantiate a pretrained EnCodec model
     model = EncodecModel.encodec_model_24khz()
-    model.set_target_bandwidth(12.0)
+    model.set_target_bandwidth(6.0)
 
     # Load and pre-process the audio waveform
     wav, sr = torchaudio.load("/u/zhvng/projects/audio_files/jumpman.mp3")
     wav = convert_audio(wav, sr, model.sample_rate, model.channels)
-    print(model.channels, model.sample_rate, model.quantizer.bins)
+    print(model.channels, model.sample_rate, model.quantizer.n_q)
     print(model.segment_stride)
     wav = torch.stack([wav, wav], dim=0)
 

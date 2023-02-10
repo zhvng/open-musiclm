@@ -221,9 +221,10 @@ class ClapQuantized(nn.Module):
         return indices
 
 
-def create_clap_quantized(device, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt"):
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+def create_clap_quantized(device=None, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt"):
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        
     precision = 'fp32'
     amodel = 'HTSAT-tiny'  # or 'PANN-14'
     tmodel = 'roberta'  # the best text encoder in our training
