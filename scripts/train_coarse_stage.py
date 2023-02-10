@@ -35,7 +35,7 @@ encodec_wrapper = create_encodec_24khz(bandwidth=12.).to(device)
 # 8 tokens per timestep @ 75 Hz
 # lets do 3 coarse 5 fine
 
-print('loading semantic stage...')
+print('loading coarse stage...')
 coarse_transformer = create_coarse_transformer(
     dim=1024,
     depth=6,

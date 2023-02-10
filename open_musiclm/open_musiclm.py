@@ -410,11 +410,11 @@ def create_coarse_transformer(dim=512, depth=6, clap_codebook_size=1024, semanti
 
 
 @beartype
-def create_fine_transformer(dim=512, depth=6, clap_codebook_size=1024, acoustic_codebook_size=1024, num_fine_quantizers=8, **kwargs):
+def create_fine_transformer(dim=512, depth=6, clap_codebook_size=1024, acoustic_codebook_size=1024, num_coarse_quantizers=4, num_fine_quantizers=8, **kwargs):
 
     clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
     coarse_sequence = TokenSequenceInfo(codebook_size=acoustic_codebook_size,
-                                        num_quantizers=3, unique_consecutive=False)
+                                        num_quantizers=num_coarse_quantizers, unique_consecutive=False)
     fine_sequence = TokenSequenceInfo(
         codebook_size=acoustic_codebook_size, num_quantizers=num_fine_quantizers, unique_consecutive=False)
 
