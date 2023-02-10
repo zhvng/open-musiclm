@@ -27,6 +27,7 @@ class EncodecWrapper(nn.Module):
         assert exists(encodec.bandwidth)
         total_quantizers = encodec.quantizer.n_q
         self.num_quantizers = int(encodec.bandwidth / 24 * total_quantizers) # output quantizers per frame
+        self.codebook_size = encodec.quantizer.bins
 
     def forward(self, x: torch.Tensor, return_encoded = True, **kwargs):
         assert return_encoded == True

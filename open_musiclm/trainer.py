@@ -90,7 +90,14 @@ def noop(*args, **kwargs):
 
 @beartype
 class SingleStageTrainer(nn.Module):
-    """General trainer for any stage"""
+    """
+    General trainer for any stage.
+    Stages:
+        semantic: requires audio_conditioner and wav2vec
+
+    Args:
+
+    """
 
     def __init__(
         self,
@@ -137,7 +144,6 @@ class SingleStageTrainer(nn.Module):
                 neural_codec=neural_codec,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
-                audio_conditioner=audio_conditioner
             )
         elif stage == 'fine':
             assert exists(audio_conditioner) and exists(neural_codec)

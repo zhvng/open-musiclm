@@ -139,8 +139,8 @@ class TokenConditionedTransformer(nn.Module):
         split_at = split_at[:-1]  # remove last element (total number of tokens)
         all_pred_tokens = torch.tensor_split(tokens, split_at, dim=1)
 
-        # strip eos token from all sequences
-        all_pred_tokens = [pred_tokens[:, :-1] for pred_tokens in all_pred_tokens]
+        # strip eos token from all sequences besides end
+        all_pred_tokens = [pred_tokens[:, :-1] for pred_tokens in all_pred_tokens[:-1]] +  [all_pred_tokens[-1]]
 
         # get logits
 
@@ -279,6 +279,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
                 pred_logits = self.transformer(
                     all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
                     return_only_final_seq_logits=True,
+                    input_has_eos=True,
                     **kwargs
                 )[-1]
 
@@ -305,7 +306,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
         self,
         *,
         all_token_ids: List[torch.Tensor],
-        return_loss=False,
+        return_loss: bool=False,
+        input_has_eos: bool=False,
         **kwargs
     ):
         assert len(all_token_ids) == len(self.token_sequences)
@@ -315,6 +317,10 @@ class TokenConditionedTransformerWrapper(nn.Module):
         all_token_ids = list(map(lambda t: rearrange(t, 'b ... -> b (...)'), all_token_ids))
 
         if self.training:
+            assert not input_has_eos, "train sequences (from clap, wav2vec, etc.) shouldn't come with an eos token"
+        
+        # append eos to sequences if not already there
+        if not input_has_eos:
             all_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(all_token_ids, self.eos_ids)]
 
         if self.unique_consecutive:
@@ -324,7 +330,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         if return_loss:
             all_labels = [ids.clone() for ids in all_token_ids]
-            # all_token_ids[-1] = all_token_ids[-1][:, :-1]  # don't include eos in loss
+            all_token_ids[-1] = all_token_ids[-1][:, :-1]  # don't include last token when returning loss (should be eos)
 
         # do not attend to padding tokens or eos tokens
         combined_self_attn_mask = torch.empty((batch, 0), device=device, dtype=torch.bool)
@@ -346,6 +352,9 @@ class TokenConditionedTransformerWrapper(nn.Module):
             combined_self_attn_mask &= generate_mask_with_prob(
                 combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
 
+        print(all_token_ids)
+        for ids in all_token_ids:
+            print(ids.shape)    
         all_logits = self.transformer(
             all_token_ids=all_token_ids,
             self_attn_mask=combined_self_attn_mask,

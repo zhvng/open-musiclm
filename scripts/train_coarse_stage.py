@@ -41,7 +41,7 @@ coarse_transformer = create_coarse_transformer(
     depth=6,
     clap_codebook_size=clap.codebook_size,
     semantic_codebook_size=wav2vec.codebook_size,
-    acoustic_codebook_size=wav2vec.codebook_size,
+    acoustic_codebook_size=encodec_wrapper.codebook_size,
     num_coarse_quantizers=3,
 ).to(device)
 
