@@ -352,9 +352,6 @@ class TokenConditionedTransformerWrapper(nn.Module):
             combined_self_attn_mask &= generate_mask_with_prob(
                 combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
 
-        print(all_token_ids)
-        for ids in all_token_ids:
-            print(ids.shape)    
         all_logits = self.transformer(
             all_token_ids=all_token_ids,
             self_attn_mask=combined_self_attn_mask,
