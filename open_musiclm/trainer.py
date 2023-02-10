@@ -91,12 +91,10 @@ def noop(*args, **kwargs):
 @beartype
 class SingleStageTrainer(nn.Module):
     """
-    General trainer for any stage.
-    Stages:
+    General trainer for any stage of MusicLM.
         semantic: requires audio_conditioner and wav2vec
-
-    Args:
-
+        coarse: requires audio_conditioner, wav2vec, and neural_codec
+        fine: requires audio_conditioner and neural_codec
     """
 
     def __init__(
