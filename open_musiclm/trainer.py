@@ -108,6 +108,7 @@ class SingleStageTrainer(nn.Module):
         wav2vec: Optional[Wav2Vec] = None,
         neural_codec: Optional[NeuralCodec] = None,
         audio_conditioner: Optional[ClapQuantized] = None,
+        data_max_seconds = None,
         data_max_length=None,
         folder=None,
         lr=3e-4,
@@ -161,6 +162,9 @@ class SingleStageTrainer(nn.Module):
             seq_len_multiple_of = None
         else:
             raise ValueError(f'invalid stage: {stage}')
+
+        if exists(data_max_seconds):
+            data_max_length = tuple([data_max_seconds * hz for hz in target_sample_hz])
 
         self.register_buffer('steps', torch.Tensor([0]))
 
