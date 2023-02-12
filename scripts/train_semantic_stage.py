@@ -45,6 +45,7 @@ trainer = SingleStageTrainer(
     batch_size=1,
     data_max_length=320 * 32,
     num_train_steps=1,
+    results_folder='./results/semantic',
     accelerate_kwargs={
         'log_with': "tensorboard",
     }
