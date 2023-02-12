@@ -536,15 +536,16 @@ class SemanticStage(nn.Module):
     def forward(
         self,
         *,
-        input_audio=None,
+        raw_wave_for_clap=None,
+        raw_wave_for_semantic=None,
         clap_token_ids: Optional[torch.Tensor] = None,
         semantic_token_ids: Optional[torch.Tensor] = None,
         return_loss=False,
         **kwargs
     ):
-        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, input_audio, conditioning_text=None)
+        clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, raw_wave_for_clap, conditioning_text=None)
         semantic_token_ids = get_or_compute_semantic_token_ids(
-            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch_size=clap_token_ids.shape[0], device=self.device)
+            semantic_token_ids=semantic_token_ids, raw_audio=raw_wave_for_semantic, wav2vec=self.wav2vec, batch_size=clap_token_ids.shape[0], device=self.device)
 
         return self.transformer_wrapper.forward(
             all_token_ids=[clap_token_ids, semantic_token_ids],
@@ -626,7 +627,9 @@ class CoarseStage(nn.Module):
     def forward(
         self,
         *,
-        input_audio=None,
+        raw_wave_for_clap=None,
+        raw_wave_for_semantic=None,
+        raw_wave_for_acoustic=None,
         clap_token_ids: Optional[torch.Tensor] = None,
         semantic_token_ids: Optional[torch.Tensor] = None,
         coarse_token_ids: Optional[torch.Tensor] = None,
@@ -634,14 +637,14 @@ class CoarseStage(nn.Module):
         **kwargs
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
-                                                       conditioning_audio=input_audio, conditioning_text=None)
+                                                       conditioning_audio=raw_wave_for_clap, conditioning_text=None)
         semantic_token_ids = get_or_compute_semantic_token_ids(
-            semantic_token_ids=semantic_token_ids, raw_audio=input_audio, wav2vec=self.wav2vec, batch_size=clap_token_ids.shape[0], device=self.device)
+            semantic_token_ids=semantic_token_ids, raw_audio=raw_wave_for_semantic, wav2vec=self.wav2vec, batch_size=clap_token_ids.shape[0], device=self.device)
 
         coarse_token_ids, _ = get_or_compute_acoustic_token_ids(
             coarse_token_ids=coarse_token_ids,
             fine_token_ids=None,
-            raw_audio=input_audio,
+            raw_audio=raw_wave_for_acoustic,
             neural_codec=self.neural_codec,
             num_coarse_quantizers=self.num_coarse_quantizers
         )
@@ -719,7 +722,8 @@ class FineStage(nn.Module):
     def forward(
         self,
         *,
-        input_audio=None,
+        raw_wave_for_clap=None,
+        raw_wave_for_acoustic=None,
         clap_token_ids: Optional[torch.Tensor] = None,
         coarse_token_ids: Optional[torch.Tensor] = None,
         fine_token_ids: Optional[torch.Tensor] = None,
@@ -727,12 +731,12 @@ class FineStage(nn.Module):
         **kwargs
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids=clap_token_ids, clap=self.clap,
-                                                       conditioning_audio=input_audio, conditioning_text=None)
+                                                       conditioning_audio=raw_wave_for_clap, conditioning_text=None)
 
         coarse_token_ids, fine_token_ids = get_or_compute_acoustic_token_ids(
             coarse_token_ids=coarse_token_ids,
             fine_token_ids=fine_token_ids,
-            raw_audio=input_audio,
+            raw_audio=raw_wave_for_acoustic,
             neural_codec=self.neural_codec,
             num_coarse_quantizers=self.num_coarse_quantizers
         )

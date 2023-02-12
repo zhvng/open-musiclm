@@ -135,6 +135,9 @@ class SingleStageTrainer(nn.Module):
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
             )
+            self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic')
+            target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz)
+            seq_len_multiple_of = wav2vec.seq_len_multiple_of
         elif stage == 'coarse':
             assert exists(wav2vec) and exists(audio_conditioner) and exists(neural_codec)
             self.train_wrapper = CoarseStage(
@@ -143,6 +146,9 @@ class SingleStageTrainer(nn.Module):
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
             )
+            self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic', 'raw_wave_for_acoustic')
+            target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz, neural_codec.sample_rate)
+            seq_len_multiple_of = wav2vec.seq_len_multiple_of
         elif stage == 'fine':
             assert exists(audio_conditioner) and exists(neural_codec)
             self.train_wrapper = FineStage(
@@ -150,6 +156,9 @@ class SingleStageTrainer(nn.Module):
                 clap=audio_conditioner,
                 neural_codec=neural_codec,
             )
+            self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_acoustic')
+            target_sample_hz = (audio_conditioner.sample_rate, neural_codec.sample_rate)
+            seq_len_multiple_of = None
         else:
             raise ValueError(f'invalid stage: {stage}')
 
@@ -177,11 +186,9 @@ class SingleStageTrainer(nn.Module):
             self.ds = SoundDataset(
                 folder,
                 max_length=data_max_length,
-                target_sample_hz=wav2vec.target_sample_hz,
+                target_sample_hz=target_sample_hz,
                 seq_len_multiple_of=wav2vec.seq_len_multiple_of
             )
-
-        self.ds_fields = None
 
         # split for validation
 
@@ -272,13 +279,6 @@ class SingleStageTrainer(nn.Module):
     def is_local_main(self):
         return self.accelerator.is_local_main_process
 
-    def data_tuple_to_kwargs(self, data):
-        if not exists(self.ds_fields):
-            self.ds_fields = determine_types(data, DATASET_FIELD_TYPE_CONFIG)
-            assert not has_duplicates(self.ds_fields), 'dataset fields must not have duplicate field names'
-
-        return dict(zip(self.ds_fields, data))
-
     def train_step(self):
         device = self.device
 
@@ -293,7 +293,7 @@ class SingleStageTrainer(nn.Module):
         # update vae (generator)
 
         for _ in range(self.grad_accum_every):
-            data_kwargs = self.data_tuple_to_kwargs(next(self.dl_iter))
+            data_kwargs = dict(zip(self.ds_fields, next(self.dl_iter)))
 
             loss = self.train_wrapper(**data_kwargs, return_loss=True)
 
@@ -315,7 +315,7 @@ class SingleStageTrainer(nn.Module):
         # sample results every so often
 
         if self.is_main and not (steps % self.save_results_every):
-            data_kwargs = self.data_tuple_to_kwargs(next(self.valid_dl_iter))
+            data_kwargs = dict(zip(self.ds_fields, next(self.dl_iter)))
 
             with torch.no_grad():
                 self.train_wrapper.eval()

@@ -48,6 +48,8 @@ class ClapQuantized(nn.Module):
         )
         self.log_mel_transform = torchaudio.transforms.AmplitudeToDB(top_db=None)
 
+        self.sample_rate = audio_cfg['sample_rate']
+
         if not exists(tokenizer):
             tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         self.tokenizer = tokenizer
