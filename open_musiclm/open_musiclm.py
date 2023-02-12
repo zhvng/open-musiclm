@@ -607,6 +607,7 @@ class CoarseStage(nn.Module):
         temperature=1.,
         max_time_steps=10*600,
         include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        reconstruct_wave = False,
         **kwargs
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
@@ -622,6 +623,11 @@ class CoarseStage(nn.Module):
             **kwargs
         )
 
+        if reconstruct_wave:
+            assert exists(self.neural_codec)
+            wave = self.neural_codec.decode_from_codebook_indices(sampled_tokens)
+            return rearrange(wave, 'b 1 n -> b n')
+        
         return sampled_tokens
 
     def forward(
@@ -702,6 +708,7 @@ class FineStage(nn.Module):
         temperature=1.,
         max_time_steps=3*600,
         include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        reconstruct_wave=False,
         **kwargs
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
@@ -717,6 +724,12 @@ class FineStage(nn.Module):
             **kwargs
         )
 
+        if reconstruct_wave:
+            assert exists(self.neural_codec)
+            coarse_and_fine_ids = torch.cat((coarse_token_ids, sampled_tokens[-1]), dim = -1)
+            wave = self.neural_codec.decode_from_codebook_indices(coarse_and_fine_ids)
+            return rearrange(wave, 'b 1 n -> b n')
+        
         return sampled_tokens
 
     def forward(
