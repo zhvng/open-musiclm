@@ -187,7 +187,7 @@ class SingleStageTrainer(nn.Module):
                 folder,
                 max_length=data_max_length,
                 target_sample_hz=target_sample_hz,
-                seq_len_multiple_of=wav2vec.seq_len_multiple_of
+                seq_len_multiple_of=seq_len_multiple_of,
             )
 
         # split for validation
