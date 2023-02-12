@@ -1,5 +1,5 @@
 # Open MusicLM
-Pytorch implementation of MusicLM that uses CLAP as an audio-text model instead of MuLan. (work in progress)
+Pytorch implementation of MusicLM that uses pretrained open source models. We use [CLAP](https://github.com/LAION-AI/CLAP) as a replacement for MuLan and [Encodec](https://github.com/facebookresearch/encodec) as a replacement for SoundStream. 
 
 <p align='center'>
 <img alt='diagram of MusicLM' src='musiclm.png' title="MusicLM" height='250px'>
