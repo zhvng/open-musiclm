@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from torch import einsum, nn
 
-from .utils import default, exists, grad_shrink
+from .utils import default, exists, grad_shrink, l2norm
 
 # bias-less layernorm, being used in more recent T5s, PaLM, also in @borisdayma 's experiments shared with me
 # greater stability
@@ -104,19 +104,19 @@ class Attention(nn.Module):
         heads=8,
         norm_context=False,
         num_null_kv=0,
-        dropout=0.1
+        dropout=0.1,
+        scale=8
     ):
         super().__init__()
         self.heads = heads
-        self.scale = dim_head ** -0.5
+        self.scale = scale
         self.causal = causal
         inner_dim = dim_head * heads
 
         dim_context = default(dim_context, dim)
 
         self.norm = LayerNorm(dim)
-        self.context_norm = LayerNorm(
-            dim_context) if norm_context else nn.Identity()
+        self.context_norm = LayerNorm(dim_context) if norm_context else nn.Identity()
 
         self.attn_dropout = nn.Dropout(dropout)
 
@@ -125,6 +125,10 @@ class Attention(nn.Module):
 
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(dim_context, dim_head * 2, bias=False)
+
+        self.q_scale = nn.Parameter(torch.ones(dim_head))
+        self.k_scale = nn.Parameter(torch.ones(dim_head))
+
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim, bias=False),
             nn.Dropout(dropout)
@@ -175,8 +179,7 @@ class Attention(nn.Module):
         # null key / values
 
         if self.num_null_kv > 0:
-            null_k, null_v = repeat(
-                self.null_kv, 'kv n d -> kv b n d', b=b).unbind(dim=0)
+            null_k, null_v = repeat(self.null_kv, 'kv n d -> kv b n d', b=b).unbind(dim=0)
             k = torch.cat((null_k, k), dim=-2)
             v = torch.cat((null_v, v), dim=-2)
 
@@ -184,11 +187,15 @@ class Attention(nn.Module):
 
         q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
 
-        q = q * self.scale
+        # new technique, rmsnormed queries and keys, first used by 22B parameter model successfully https://arxiv.org/abs/2302.05442
+
+        q, k = map(l2norm, (q, k))
+        q = q * self.q_scale
+        k = k * self.k_scale
 
         # similarities
 
-        sim = einsum('b h i d, b j d -> b h i j', q, k)
+        sim = einsum('b h i d, b j d -> b h i j', q, k) * self.scale
 
         if exists(attn_bias):
             attn_bias = F.pad(attn_bias, (self.num_null_kv, 0), value=0.)
@@ -201,8 +208,7 @@ class Attention(nn.Module):
 
         if self.causal:
             i, j = sim.shape[-2:]
-            causal_mask = torch.ones(
-                (i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
+            causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
             sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
 
         # attention
@@ -239,6 +245,8 @@ class Transformer(nn.Module):
     ):
         super().__init__()
         assert not (cross_attend and cond_as_self_attn_prefix)
+        self.dim_context = default(dim_context, dim)
+
         self.cond_as_self_attn_prefix = cond_as_self_attn_prefix
 
         self.grad_shrink = partial(grad_shrink, alpha=grad_shrink_alpha)
@@ -249,8 +257,7 @@ class Transformer(nn.Module):
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim=dim, heads=heads, dropout=attn_dropout,
-                          causal=True, **kwargs),
+                Attention(dim=dim, heads=heads, dropout=attn_dropout, causal=True, **kwargs),
                 Attention(dim=dim, heads=heads, dropout=attn_dropout, dim_context=dim_context,
                           num_null_kv=1, norm_context=True, **kwargs) if cross_attend else None,
                 FeedForward(dim=dim, dropout=ff_dropout)
@@ -266,6 +273,8 @@ class Transformer(nn.Module):
         context_mask=None
     ):
         assert not (self.cond_as_self_attn_prefix and not exists(context))
+        assert not (exists(
+            context) and context.shape[-1] != self.dim_context), f'you had specified a conditioning dimension of {self.dim_context}, yet what was received by the transformer has dimension of {context.shape[-1]}'
 
         n, device = x.shape[1], x.device
 
@@ -282,8 +291,7 @@ class Transformer(nn.Module):
             )
 
         for attn, cross_attn, ff in self.layers:
-            x = attn(x, attn_bias=rel_pos_bias,
-                     mask=self_attn_mask, **self_attn_kwargs) + x
+            x = attn(x, attn_bias=rel_pos_bias, mask=self_attn_mask, **self_attn_kwargs) + x
 
             if exists(cross_attn):
                 assert exists(context)

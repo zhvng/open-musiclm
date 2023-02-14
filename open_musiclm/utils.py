@@ -57,6 +57,9 @@ def grad_shrink(t, alpha = 0.1):
 def log(t, eps = 1e-20):
     return torch.log(t + eps)
 
+def l2norm(t):
+    return F.normalize(t, dim = -1)
+
 def gumbel_noise(t):
     noise = torch.zeros_like(t).uniform_(0, 1)
     return -log(-log(noise))
