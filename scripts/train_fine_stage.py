@@ -14,7 +14,7 @@ from scripts.train_utils import disable_print
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-audio_folder = '../audiolm-train/test_audio'
+audio_folder = '../audiolm-train/audio'
 
 print('loading clap...')
 with disable_print():
@@ -44,7 +44,7 @@ trainer = SingleStageTrainer(
     folder=audio_folder,
     batch_size=1,
     data_max_seconds=3,
-    num_train_steps=1,
+    num_train_steps=7597 * 5,
     results_folder='./results/fine',
     accelerate_kwargs={
         'log_with': "tensorboard",
