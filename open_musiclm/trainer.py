@@ -20,6 +20,7 @@ from einops.layers.torch import Rearrange
 from torch import einsum, nn
 from torch.utils.data import DataLoader, Dataset, random_split
 from typing_extensions import Annotated
+import time
 
 from .clap_quantized import ClapQuantized
 from .data import SoundDataset, get_dataloader
@@ -108,8 +109,8 @@ class SingleStageTrainer(nn.Module):
         wav2vec: Optional[Wav2Vec] = None,
         neural_codec: Optional[NeuralCodec] = None,
         audio_conditioner: Optional[ClapQuantized] = None,
-        data_max_seconds = None,
-        data_max_length=None,
+        data_max_seconds: Optional[int]=None,
+        data_max_length: Union[int, tuple[int]]=None,
         folder=None,
         lr=3e-4,
         grad_accum_every=1,
@@ -125,6 +126,7 @@ class SingleStageTrainer(nn.Module):
         super().__init__()
         self.accelerator = Accelerator(**accelerate_kwargs)
 
+        self.transformer = transformer
         self.wav2vec = wav2vec
         self.transformer = transformer
         self.audio_conditioner = audio_conditioner
@@ -242,8 +244,12 @@ class SingleStageTrainer(nn.Module):
 
         self.results_folder.mkdir(parents=True, exist_ok=True)
 
-        hps = {"num_train_steps": num_train_steps, "data_max_length": data_max_length, "learning_rate": lr}
-        self.accelerator.init_trackers("semantic", config=hps)
+        hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
+        if exists(data_max_seconds):
+            hps['data_max_seconds'] = data_max_seconds
+        if type(data_max_length) is int:
+            hps['data_max_length'] = data_max_length
+        self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
 
     def save(self, path):
         pkg = dict(

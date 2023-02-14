@@ -58,6 +58,7 @@ trainer = SingleStageTrainer(
     results_folder='./results/coarse',
     accelerate_kwargs={
         'log_with': "tensorboard",
+        'logging_dir': './logs/coarse'
     }
 ).to(device)
 

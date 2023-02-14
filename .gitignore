@@ -3,6 +3,7 @@ data/
 checkpoints/
 results/
 test.wav
+logs/
 
 
 # Byte-compiled / optimized / DLL files

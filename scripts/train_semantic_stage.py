@@ -48,6 +48,7 @@ trainer = SingleStageTrainer(
     results_folder='./results/semantic',
     accelerate_kwargs={
         'log_with': "tensorboard",
+        'logging_dir': './logs/semantic'
     }
 ).to(device)
 
