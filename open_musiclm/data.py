@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torchaudio
 from beartype import beartype
 from beartype.door import is_bearable
-from beartype.typing import Optional, Tuple, Union
+from beartype.typing import Optional, Tuple, Union, List
 from einops import rearrange
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
@@ -36,13 +36,21 @@ class SoundDataset(Dataset):
         exts = ['flac', 'wav', 'mp3'],
         max_length: OptionalIntOrTupleInt = None,
         target_sample_hz: OptionalIntOrTupleInt = None,
-        seq_len_multiple_of: OptionalIntOrTupleInt = None
+        seq_len_multiple_of: OptionalIntOrTupleInt = None,
+        ignore_files: Optional[List[str]] = None
     ):
         super().__init__()
         path = Path(folder)
         assert path.exists(), 'folder does not exist'
 
-        files = [file for ext in exts for file in path.glob(f'**/*.{ext}')]
+        files = []
+        for ext in exts:
+            for file in path.glob(f'**/*.{ext}'):
+                if any(ignore_file in str(file) for ignore_file in ignore_files):
+                    print(f'found ignored file, skipping')
+                    continue
+                else:
+                    files.append(file)
         assert len(files) > 0, 'no sound files found'
 
         self.files = files

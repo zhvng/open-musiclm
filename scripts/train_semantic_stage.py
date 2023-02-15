@@ -20,7 +20,7 @@ print('loading clap...')
 
 
 with disable_print():
-    clap = create_clap_quantized(device=device, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt").to(device)
+    clap = create_clap_quantized(device=device, learn_rvq=True, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt").to(device)
 
 print('loading wav2vec...')
 wav2vec = FairseqVQWav2Vec(
@@ -36,6 +36,12 @@ semantic_transformer = create_semantic_transformer(
     semantic_codebook_size=wav2vec.codebook_size,
 ).to(device)
 
+corrupted_files = ['fma_small/098/098565.mp3',
+                  'fma_small/098/098567.mp3',
+                  'fma_small/098/098569.mp3',
+                  'fma_small/099/099134.mp3',
+                  'fma_small/108/108925.mp3',
+                  'fma_small/133/133297.mp3']
 trainer = SingleStageTrainer(
     transformer=semantic_transformer,
     stage='semantic',
@@ -46,6 +52,7 @@ trainer = SingleStageTrainer(
     data_max_seconds=10,
     num_train_steps=7597 * 5,
     results_folder='./results/semantic',
+    ignore_files=corrupted_files,
     accelerate_kwargs={
         'log_with': "tensorboard",
         'logging_dir': './logs/semantic'

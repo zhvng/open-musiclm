@@ -24,12 +24,14 @@ class ClapQuantized(nn.Module):
                  codebook_size: int = 1024,
                  rq_num_quantizers: int = 12,
                  rq_ema_decay: float = 0.95,
+                 learn_rvq: bool = False,
                  ):
         super().__init__()
 
         self.clap = clap
         self.clap_cfg = clap_cfg
         self.codebook_size = codebook_size
+        self.learn_rvq = learn_rvq
 
         audio_cfg = clap_cfg['audio_cfg']
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
@@ -218,13 +220,15 @@ class ClapQuantized(nn.Module):
         if return_embedding:
             return embedding
 
-        _, indices, _ = self.rq(rearrange(embedding, 'n c -> n 1 c'))
+        with torch.set_grad_enabled(self.learn_rvq):
+            self.rq.train(self.learn_rvq)
+            _, indices, _ = self.rq(rearrange(embedding, 'n c -> n 1 c'))
 
         indices = rearrange(indices, 'n 1 c -> n c 1') # doesn't really matter but do it for convention
         return indices
 
 
-def create_clap_quantized(device=None, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt"):
+def create_clap_quantized(device=None, learn_rvq=False, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt", rvq_checkpoint_path=None):
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -246,6 +250,10 @@ def create_clap_quantized(device=None, checkpoint_path="./checkpoints/clap-laion
         fusion_type=fusion_type,
     )
 
-    clap = ClapQuantized(clap=model, clap_cfg=model_cfg)
+    clap = ClapQuantized(clap=model, clap_cfg=model_cfg, learn_rvq=learn_rvq)
+
+    if exists(rvq_checkpoint_path):
+        rvq = torch.load(rvq_checkpoint_path)
+        clap.rq.load_state_dict(rvq)
 
     return clap

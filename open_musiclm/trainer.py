@@ -111,6 +111,7 @@ class SingleStageTrainer(nn.Module):
         audio_conditioner: Optional[ClapQuantized] = None,
         data_max_seconds: Optional[int]=None,
         data_max_length: Union[int, tuple[int]]=None,
+        ignore_files: Optional[List[str]]=None,
         folder=None,
         lr=3e-4,
         grad_accum_every=1,
@@ -130,6 +131,8 @@ class SingleStageTrainer(nn.Module):
         self.wav2vec = wav2vec
         self.transformer = transformer
         self.audio_conditioner = audio_conditioner
+
+        self.stage = stage
 
         if stage == 'semantic':
             assert exists(audio_conditioner) and exists(wav2vec)
@@ -194,6 +197,7 @@ class SingleStageTrainer(nn.Module):
                 max_length=data_max_length,
                 target_sample_hz=target_sample_hz,
                 seq_len_multiple_of=seq_len_multiple_of,
+                ignore_files=ignore_files
             )
 
         # split for validation
@@ -338,11 +342,16 @@ class SingleStageTrainer(nn.Module):
 
         if self.is_main and not (steps % self.save_model_every):
             state_dict = self.transformer.state_dict()
-            model_path = str(self.results_folder / f'semantic.transformer.{steps}.pt')
+            model_path = str(self.results_folder / f'{self.stage}.transformer.{steps}.pt')
             torch.save(state_dict, model_path)
 
             self.print(f'{steps}: saving model to {str(self.results_folder)}')
 
+            # save audio conditioner (clap) rvq checkpoint
+            if self.audio_conditioner.learn_rvq:
+                rvq_state_dict = self.audio_conditioner.rq.state_dict()
+                torch.save(rvq_state_dict, str(self.results_folder / f'{self.stage}.conditioner_rvq.{steps}.pt'))
+                
         self.steps += 1
         return logs
 
