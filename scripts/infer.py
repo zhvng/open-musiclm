@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 import torchaudio
 from audiolm_pytorch import FairseqVQWav2Vec
+from einops import rearrange
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -90,6 +91,7 @@ generated_wave = musiclm.forward(text=['chirping of birds and the distant echos 
 
 print(generated_wave.shape)
 
+generated_wave = rearrange(generated_wave, 'b n -> b 1 n')
 for i, wave in enumerate(generated_wave):
     torchaudio.save(f'results/gen_{i}.wav', wave, encodec_wrapper.sample_rate)
 

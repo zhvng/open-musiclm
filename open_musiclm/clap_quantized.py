@@ -186,7 +186,7 @@ class ClapQuantized(nn.Module):
             max_length=77,
             return_tensors="pt",
         )
-        return {k: v.squeeze(0) for k, v in result.items()}
+        return result
 
     def forward(self,
                 *,
@@ -218,8 +218,9 @@ class ClapQuantized(nn.Module):
         if return_embedding:
             return embedding
 
-        _, indices, _ = self.rq(rearrange(embedding, 'n c -> 1 n c'))
+        _, indices, _ = self.rq(rearrange(embedding, 'n c -> n 1 c'))
 
+        indices = rearrange(indices, 'n 1 c -> n c 1') # doesn't really matter but do it for convention
         return indices
 
 

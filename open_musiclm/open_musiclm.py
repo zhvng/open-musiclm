@@ -720,7 +720,7 @@ class FineStage(nn.Module):
 
         if reconstruct_wave:
             assert exists(self.neural_codec)
-            coarse_and_fine_ids = torch.cat((coarse_token_ids, sampled_tokens[-1]), dim = -1)
+            coarse_and_fine_ids = torch.cat((coarse_token_ids, sampled_tokens), dim = -1)
             wave = self.neural_codec.decode_from_codebook_indices(coarse_and_fine_ids)
             return rearrange(wave, 'b 1 n -> b n')
         
@@ -838,6 +838,7 @@ class MusicLM(nn.Module):
             clap_token_ids=clap_token_ids,
             coarse_token_ids=coarse_token_ids_or_recon_wave,
             max_time_steps=output_seconds * acoustic_steps_per_second,
+            reconstruct_wave=True,
         )
 
-        return generated_wave
+        return generated_wave.detach().cpu()
