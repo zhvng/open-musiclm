@@ -2,7 +2,7 @@ import os
 import sys
 
 import torch
-from audiolm_pytorch import FairseqVQWav2Vec
+from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -19,15 +19,16 @@ audio_folder = '../audiolm-train/audio'
 
 print('loading clap...')
 
-
+clap_checkpoint = "./checkpoints/clap-laion-audioset-fusion.pt"
+rvq_checkpoint = './results/semantic/semantic.conditioner_rvq.6000.pt'
 with disable_print():
-    clap = create_clap_quantized(device=device, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt").to(device)
+    clap = create_clap_quantized(device=device, learn_rvq=False, checkpoint_path=clap_checkpoint, rvq_checkpoint_path=rvq_checkpoint).to(device)
 
 print('loading wav2vec...')
-wav2vec = FairseqVQWav2Vec(
-    # checkpoint_path = './hubert/hubert_base_ls960.pt',
-    checkpoint_path='./checkpoints/vq-wav2vec_kmeans.pt'
-)
+wav2vec = HubertWithKmeans(
+    checkpoint_path = './checkpoints/hubert_base_ls960.pt',
+    kmeans_path = './checkpoints/hubert_base_ls960_L9_km500.bin'
+).to(device)
 
 print('loading encodec')
 encodec_wrapper = create_encodec_24khz(bandwidth=12.).to(device)
@@ -45,6 +46,12 @@ coarse_transformer = create_coarse_transformer(
     num_coarse_quantizers=3,
 ).to(device)
 
+corrupted_files = ['fma_small/098/098565.mp3',
+                   'fma_small/098/098567.mp3',
+                   'fma_small/098/098569.mp3',
+                   'fma_small/099/099134.mp3',
+                   'fma_small/108/108925.mp3',
+                   'fma_small/133/133297.mp3']
 trainer = SingleStageTrainer(
     transformer=coarse_transformer,
     stage='coarse',
@@ -52,10 +59,12 @@ trainer = SingleStageTrainer(
     wav2vec=wav2vec,
     neural_codec=encodec_wrapper,
     folder=audio_folder,
-    batch_size=1,
-    data_max_seconds=5,
-    num_train_steps=7597 * 5,
+    batch_size=2,
+    grad_accum_every=8,
+    data_max_seconds=6,
+    num_train_steps=7597 * 2,
     results_folder='./results/coarse',
+    ignore_files=corrupted_files,
     accelerate_kwargs={
         'log_with': "tensorboard",
         'logging_dir': './logs/coarse'

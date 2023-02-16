@@ -2,7 +2,7 @@ import os
 import sys
 
 import torch
-from audiolm_pytorch import FairseqVQWav2Vec
+from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -23,10 +23,10 @@ with disable_print():
     clap = create_clap_quantized(device=device, learn_rvq=True, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt").to(device)
 
 print('loading wav2vec...')
-wav2vec = FairseqVQWav2Vec(
-    # checkpoint_path = './hubert/hubert_base_ls960.pt',
-    checkpoint_path='./checkpoints/vq-wav2vec_kmeans.pt'
-)
+wav2vec = HubertWithKmeans(
+    checkpoint_path = './checkpoints/hubert_base_ls960.pt',
+    kmeans_path = './checkpoints/hubert_base_ls960_L9_km500.bin'
+).to(device)
 
 print('loading semantic stage...')
 semantic_transformer = create_semantic_transformer(
@@ -37,21 +37,22 @@ semantic_transformer = create_semantic_transformer(
 ).to(device)
 
 corrupted_files = ['fma_small/098/098565.mp3',
-                  'fma_small/098/098567.mp3',
-                  'fma_small/098/098569.mp3',
-                  'fma_small/099/099134.mp3',
-                  'fma_small/108/108925.mp3',
-                  'fma_small/133/133297.mp3']
+                   'fma_small/098/098567.mp3',
+                   'fma_small/098/098569.mp3',
+                   'fma_small/099/099134.mp3',
+                   'fma_small/108/108925.mp3',
+                   'fma_small/133/133297.mp3']
 trainer = SingleStageTrainer(
     transformer=semantic_transformer,
     stage='semantic',
     audio_conditioner=clap,
     wav2vec=wav2vec,
     folder=audio_folder,
-    batch_size=1,
-    data_max_seconds=10,
+    batch_size=2,
+    grad_accum_every=4,
+    data_max_seconds=8,
     num_train_steps=7597 * 5,
-    results_folder='./results/semantic',
+    results_folder='./results/semantic2',
     ignore_files=corrupted_files,
     accelerate_kwargs={
         'log_with': "tensorboard",
