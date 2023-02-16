@@ -245,7 +245,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
         max_time_steps=512,
         filter_thres=0.9,
         temperature=1.,
-        include_eos_in_output=True,
+        include_eos_in_output=False,
+        append_eos_to_conditioning_tokens=True,
         **kwargs
     ):
         assert len(conditioning_token_ids) == len(self.token_sequences) - 1
@@ -261,11 +262,18 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         pred_sequence_info, pred_eos_id = self.token_sequences[-1], self.eos_ids[-1]
 
+        # batch unique consecutive
         for index, sequence_info in enumerate(self.token_sequences[:-1]):
             if sequence_info.unique_consecutive:
                 conditioning_token_ids[index] = batch_unique_consecutive(
                     conditioning_token_ids[index], pad_value=self.pad_id)
-        pred_token_ids = batch_unique_consecutive(pred_token_ids, pad_value=self.pad_id)
+        if self.token_sequences[-1].unique_consecutive:
+            pred_token_ids = batch_unique_consecutive(pred_token_ids, pad_value=self.pad_id)
+
+        # reshape and append eos
+        if append_eos_to_conditioning_tokens:
+            conditioning_token_ids = list(map(lambda t: rearrange(t, 'b ... -> b (...)'), conditioning_token_ids))
+            conditioning_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(conditioning_token_ids, self.eos_ids)]
 
         # initialize
 
@@ -507,7 +515,8 @@ class SemanticStage(nn.Module):
         filter_thres=0.9,
         temperature=1.,
         max_time_steps=30*25,
-        include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        include_eos_in_output=False,
+        append_eos_to_conditioning_tokens=True,
         **kwargs
     ):
 
@@ -523,6 +532,7 @@ class SemanticStage(nn.Module):
             filter_thres=filter_thres,
             temperature=temperature,
             include_eos_in_output=include_eos_in_output,
+            append_eos_to_conditioning_tokens=append_eos_to_conditioning_tokens,
             **kwargs
         )
 
@@ -600,7 +610,8 @@ class CoarseStage(nn.Module):
         filter_thres=0.9,
         temperature=1.,
         max_time_steps=10*600,
-        include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        include_eos_in_output=False,  # if doing hierarchical sampling, eos can be kept for an easy time
+        append_eos_to_conditioning_tokens=True, # if doing heirarchical sampling and you want more control
         reconstruct_wave = False,
         **kwargs
     ):
@@ -614,6 +625,7 @@ class CoarseStage(nn.Module):
             filter_thres=filter_thres,
             temperature=temperature,
             include_eos_in_output=include_eos_in_output,
+            append_eos_to_conditioning_tokens=append_eos_to_conditioning_tokens,
             **kwargs
         )
 
@@ -701,7 +713,8 @@ class FineStage(nn.Module):
         filter_thres=0.9,
         temperature=1.,
         max_time_steps=3*600,
-        include_eos_in_output=True,  # if doing hierarchical sampling, eos must be kept for an easy time
+        include_eos_in_output=False,  # if doing hierarchical sampling, eos can be kept for an easy time
+        append_eos_to_conditioning_tokens=True, # if doing heirarchical sampling and you want more control
         reconstruct_wave=False,
         **kwargs
     ):
@@ -715,6 +728,7 @@ class FineStage(nn.Module):
             filter_thres=filter_thres,
             temperature=temperature,
             include_eos_in_output=include_eos_in_output,
+            append_eos_to_conditioning_tokens=append_eos_to_conditioning_tokens,
             **kwargs
         )
 
@@ -809,36 +823,61 @@ class MusicLM(nn.Module):
         *,
         text: Optional[List[str]] = None,
         prime_wave=None,
-        output_seconds=3,
+        output_seconds=8,
+        semantic_window_seconds=8,
+        coarse_window_seconds=6,
+        fine_window_seconds=2,
         semantic_steps_per_second=50, # TODO: Get actual number
         acoustic_steps_per_second=75, # 75 for encodec, 50 for soundstream
         return_coarse_generated_wave=False,
         mask_out_generated_fine_tokens=False
     ):
         assert exists(text), 'text needs to be passed in if one of the transformer requires conditioning'
+        assert output_seconds <= semantic_window_seconds, 'no sliding semantic winodow (for now)'
 
         clap_token_ids = get_or_compute_clap_token_ids(None, self.clap, conditioning_audio=None, conditioning_text=text)
 
-        semantic_token_ids = self.semantic.generate(
+        all_semantic_token_ids = self.semantic.generate(
             clap_token_ids=clap_token_ids,
             max_time_steps=output_seconds * semantic_steps_per_second,
+            include_eos_in_output=False,
+            append_eos_to_conditioning_tokens=True,
         )
 
-        coarse_token_ids_or_recon_wave = self.coarse.generate(
-            clap_token_ids=clap_token_ids,
-            semantic_token_ids=semantic_token_ids,
-            max_time_steps=output_seconds * acoustic_steps_per_second,
-            reconstruct_wave=return_coarse_generated_wave
-        )
+        # crop to coarse window length and iterate 
+        all_semantic_token_ids = torch.split(all_semantic_token_ids, coarse_window_seconds * semantic_steps_per_second, dim=1)
+
+        all_coarse_token_ids_or_recon_wave = []
+        for semantic_token_ids in all_semantic_token_ids:
+            # TODO: pad to coarse_window_seconds if needed
+            coarse_token_ids_or_recon_wave = self.coarse.generate(
+                clap_token_ids=clap_token_ids,
+                semantic_token_ids=semantic_token_ids,
+                max_time_steps=coarse_window_seconds * acoustic_steps_per_second,
+                reconstruct_wave=return_coarse_generated_wave,
+                include_eos_in_output=False,
+                append_eos_to_conditioning_tokens=True,
+            )
+
+            all_coarse_token_ids_or_recon_wave.append(coarse_token_ids_or_recon_wave)
 
         if return_coarse_generated_wave:
-            return coarse_token_ids_or_recon_wave
+            return torch.cat(all_coarse_token_ids_or_recon_wave, dim=-1).detach().cpu()
 
-        generated_wave = self.fine.generate(
-            clap_token_ids=clap_token_ids,
-            coarse_token_ids=coarse_token_ids_or_recon_wave,
-            max_time_steps=output_seconds * acoustic_steps_per_second,
-            reconstruct_wave=True,
-        )
+        # crop to fine window length and iterate 
+        all_coarse_token_ids_or_recon_wave = torch.cat(all_coarse_token_ids_or_recon_wave, dim=-2)
+        all_coarse_token_ids = torch.split(all_coarse_token_ids_or_recon_wave, fine_window_seconds * acoustic_steps_per_second, dim=1)
 
-        return generated_wave.detach().cpu()
+        generated_waves = []
+        for coarse_token_ids in all_coarse_token_ids:
+            generated_wave = self.fine.generate(
+                clap_token_ids=clap_token_ids,
+                coarse_token_ids=coarse_token_ids,
+                max_time_steps=fine_window_seconds * acoustic_steps_per_second,
+                reconstruct_wave=True,
+                include_eos_in_output=False,
+                append_eos_to_conditioning_tokens=True,
+            )
+            generated_waves.append(generated_wave)
+
+        return torch.cat(generated_waves, dim=-1).detach().cpu()

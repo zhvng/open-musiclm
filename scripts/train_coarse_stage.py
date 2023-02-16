@@ -11,7 +11,7 @@ from open_musiclm.clap_quantized import create_clap_quantized
 from open_musiclm.open_musiclm import create_coarse_transformer 
 from open_musiclm.encodec_wrapper import create_encodec_24khz
 from open_musiclm.trainer import SingleStageTrainer
-from scripts.train_utils import disable_print
+from scripts.train_utils import disable_print, get_wav2vec
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -25,10 +25,7 @@ with disable_print():
     clap = create_clap_quantized(device=device, learn_rvq=False, checkpoint_path=clap_checkpoint, rvq_checkpoint_path=rvq_checkpoint).to(device)
 
 print('loading wav2vec...')
-wav2vec = HubertWithKmeans(
-    checkpoint_path = './checkpoints/hubert_base_ls960.pt',
-    kmeans_path = './checkpoints/hubert_base_ls960_L9_km500.bin'
-).to(device)
+wav2vec = get_wav2vec(device=device)
 
 print('loading encodec')
 encodec_wrapper = create_encodec_24khz(bandwidth=12.).to(device)

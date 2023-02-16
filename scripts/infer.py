@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 import torchaudio
-from audiolm_pytorch import FairseqVQWav2Vec
+from audiolm_pytorch import HubertWithKmeans
 from einops import rearrange
 
 
@@ -14,21 +14,20 @@ from open_musiclm.clap_quantized import create_clap_quantized
 from open_musiclm.open_musiclm import create_coarse_transformer, create_fine_transformer, create_semantic_transformer, MusicLM
 from open_musiclm.encodec_wrapper import create_encodec_24khz
 from open_musiclm.trainer import SingleStageTrainer
-from scripts.train_utils import disable_print
+from scripts.train_utils import disable_print, get_wav2vec
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 audio_folder = '../audiolm-train/audio'
 
 print('loading clap...')
+clap_checkpoint = "./checkpoints/clap-laion-audioset-fusion.pt"
+rvq_checkpoint = './results/semantic/semantic.conditioner_rvq.6000.pt'
 with disable_print():
-    clap = create_clap_quantized(device=device, checkpoint_path="./checkpoints/clap-laion-audioset-fusion.pt").to(device)
+    clap = create_clap_quantized(device=device, learn_rvq=False, checkpoint_path=clap_checkpoint, rvq_checkpoint_path=rvq_checkpoint).to(device)
 
 print('loading wav2vec...')
-wav2vec = FairseqVQWav2Vec(
-    # checkpoint_path = './hubert/hubert_base_ls960.pt',
-    checkpoint_path='./checkpoints/vq-wav2vec_kmeans.pt'
-)
+wav2vec = get_wav2vec(device=device)
 
 print('loading encodec')
 encodec_wrapper = create_encodec_24khz(bandwidth=12.).to(device)
@@ -50,7 +49,6 @@ coarse_transformer = create_coarse_transformer(
     num_coarse_quantizers=3,
 ).to(device)
 
-
 fine_transformer = create_fine_transformer(
     dim=1024,
     depth=6,
@@ -67,13 +65,13 @@ def load_model(model, path):
     model.load_state_dict(pkg)
 
 print('loading semantic stage...')
-load_model(semantic_transformer, './results/semantic/semantic.transformer.2000.pt')
+load_model(semantic_transformer, './results/semantic/semantic.transformer.6000.pt')
 
 print('loading coarse stage...')
-load_model(coarse_transformer, './results/coarse/semantic.transformer.2000.pt')
+load_model(coarse_transformer, './results/coarse/coarse.transformer.4000.pt')
 
 print('loading fine stage...')
-load_model(fine_transformer, './results/fine/semantic.transformer.1000.pt')
+load_model(fine_transformer, './results/fine/fine.transformer.3000.pt')
 
 print('loading musiclm')
 musiclm = MusicLM(
