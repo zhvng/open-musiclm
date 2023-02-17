@@ -66,7 +66,7 @@ class ClapQuantized(nn.Module):
             commitment_weight=0,  # embeddings are frozen so no need for commitment loss
             decay=rq_ema_decay,
             kmeans_init=True,
-            threshold_ema_dead_code=2,
+            threshold_ema_dead_code=0,
         )
 
     def get_mel(self, audio_data):
@@ -195,6 +195,7 @@ class ClapQuantized(nn.Module):
                 audio_input: Optional[Union[List[torch.Tensor], torch.Tensor]] = None,
                 text_input: Optional[List[str]] = None,
                 return_embedding: Optional[bool] = False,
+                return_rvq_loss = False,
                 ):
         """
         Wrapper for clap module that takes in audio or text and returns the quantized embedding from the respective tower
@@ -222,9 +223,12 @@ class ClapQuantized(nn.Module):
 
         with torch.set_grad_enabled(self.learn_rvq):
             self.rq.train(self.learn_rvq)
-            _, indices, _ = self.rq(rearrange(embedding, 'n c -> n 1 c'))
+            q, indices, _ = self.rq(rearrange(embedding, 'n c -> n 1 c'))
 
-        indices = rearrange(indices, 'n 1 c -> n c 1') # doesn't really matter but do it for convention
+        if return_rvq_loss:
+            return F.mse_loss(q, rearrange(embedding, 'n c -> n 1 c')).item()
+
+        indices = rearrange(indices, 'n 1 c -> n c 1') 
         return indices
 
 
@@ -253,7 +257,7 @@ def create_clap_quantized(device=None, learn_rvq=False, checkpoint_path="./check
     clap = ClapQuantized(clap=model, clap_cfg=model_cfg, learn_rvq=learn_rvq)
 
     if exists(rvq_checkpoint_path):
-        rvq = torch.load(rvq_checkpoint_path)
+        rvq = torch.load(rvq_checkpoint_path, map_location=device)
         clap.rq.load_state_dict(rvq)
 
     return clap
