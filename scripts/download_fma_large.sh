@@ -13,6 +13,7 @@ then
     echo "fma_large already unzipped"
 else
     echo "unzipping fma_large.zip, may take a while..."
-    echo "497109f4dd721066b5ce5e5f250ec604dc78939e  fma_large.zip"    | sha1sum -c -
+    echo "497109f4dd721066b5ce5e5f250ec604dc78939e  data/fma_large.zip"    | sha1sum -c -
+    cd data
     unzip fma_large.zip
 fi
