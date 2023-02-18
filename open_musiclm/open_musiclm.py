@@ -857,6 +857,7 @@ class MusicLM(nn.Module):
                 reconstruct_wave=return_coarse_generated_wave,
                 include_eos_in_output=False,
                 append_eos_to_conditioning_tokens=True,
+                temperature=0.95,
             )
 
             all_coarse_token_ids_or_recon_wave.append(coarse_token_ids_or_recon_wave)
@@ -877,6 +878,7 @@ class MusicLM(nn.Module):
                 reconstruct_wave=True,
                 include_eos_in_output=False,
                 append_eos_to_conditioning_tokens=True,
+                temperature=0.4,
             )
             generated_waves.append(generated_wave)
 
