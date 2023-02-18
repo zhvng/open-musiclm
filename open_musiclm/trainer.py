@@ -112,6 +112,7 @@ class SingleStageTrainer(nn.Module):
         data_max_seconds: Optional[int]=None,
         data_max_length: Union[int, tuple[int]]=None,
         ignore_files: Optional[List[str]]=None,
+        ignore_load_errors=True,
         folder=None,
         lr=3e-4,
         grad_accum_every=1,
@@ -197,7 +198,8 @@ class SingleStageTrainer(nn.Module):
                 max_length=data_max_length,
                 target_sample_hz=target_sample_hz,
                 seq_len_multiple_of=seq_len_multiple_of,
-                ignore_files=default(ignore_files, [])
+                ignore_files=default(ignore_files, []),
+                ignore_load_errors=ignore_load_errors
             )
 
         # split for validation
@@ -308,12 +310,18 @@ class SingleStageTrainer(nn.Module):
 
         for _ in range(self.grad_accum_every):
             data_kwargs = dict(zip(self.ds_fields, next(self.dl_iter)))
+            non_empty_batch = False
+            while non_empty_batch is False:
+                if len(data_kwargs) == 0:
+                    continue
 
-            loss = self.train_wrapper(**data_kwargs, return_loss=True)
+                loss = self.train_wrapper(**data_kwargs, return_loss=True)
 
-            self.accelerator.backward(loss / self.grad_accum_every)
+                self.accelerator.backward(loss / self.grad_accum_every)
 
-            accum_log(logs, {'loss': loss.item() / self.grad_accum_every})
+                accum_log(logs, {'loss': loss.item() / self.grad_accum_every})
+
+                non_empty_batch = True
 
         if exists(self.max_grad_norm):
             self.accelerator.clip_grad_norm_(self.transformer.parameters(), self.max_grad_norm)
@@ -329,14 +337,19 @@ class SingleStageTrainer(nn.Module):
         # sample results every so often
 
         if self.is_main and not (steps % self.save_results_every):
-            data_kwargs = dict(zip(self.ds_fields, next(self.valid_dl_iter)))
+            non_empty_batch = False
+            while non_empty_batch is False:
+                data_kwargs = dict(zip(self.ds_fields, next(self.valid_dl_iter)))
+                if len(data_kwargs) == 0:
+                    continue
+                
+                with torch.no_grad():
+                    self.train_wrapper.eval()
+                    valid_loss = self.train_wrapper(**data_kwargs, return_loss=True)
 
-            with torch.no_grad():
-                self.train_wrapper.eval()
-                valid_loss = self.train_wrapper(**data_kwargs, return_loss=True)
-
-            self.print(f'{steps}: valid loss {valid_loss}')
-            self.accelerator.log({"valid_loss": valid_loss}, step=steps)
+                self.print(f'{steps}: valid loss {valid_loss}')
+                self.accelerator.log({"valid_loss": valid_loss}, step=steps)
+                non_empty_batch = True
 
         # save model every so often
 
@@ -382,6 +395,7 @@ class ClapRVQTrainer(nn.Module):
         audio_conditioner: Optional[ClapQuantized] = None,
         dataset: Optional[Dataset] = None,
         ignore_files: Optional[List[str]]=None,
+        ignore_load_errors: bool=True,
         folder=None,
         wd=0.,
         max_grad_norm=0.5,
@@ -409,7 +423,8 @@ class ClapRVQTrainer(nn.Module):
                 max_length=default(data_max_length, self.audio_conditioner.sample_rate * 10),
                 target_sample_hz=audio_conditioner.sample_rate,
                 seq_len_multiple_of=None,
-                ignore_files=default(ignore_files, [])
+                ignore_files=default(ignore_files, []),
+                ignore_load_errors=ignore_load_errors
             )
 
         if valid_frac > 0:

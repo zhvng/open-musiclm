@@ -37,7 +37,8 @@ class SoundDataset(Dataset):
         max_length: OptionalIntOrTupleInt = None,
         target_sample_hz: OptionalIntOrTupleInt = None,
         seq_len_multiple_of: OptionalIntOrTupleInt = None,
-        ignore_files: Optional[List[str]] = None
+        ignore_files: Optional[List[str]] = None,
+        ignore_load_errors=True,
     ):
         super().__init__()
         path = Path(folder)
@@ -54,6 +55,7 @@ class SoundDataset(Dataset):
         assert len(files) > 0, 'no sound files found'
 
         self.files = files
+        self.ignore_load_errors = ignore_load_errors
 
         self.target_sample_hz = cast_tuple(target_sample_hz)
         num_outputs = len(self.target_sample_hz)
@@ -67,11 +69,14 @@ class SoundDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        file = self.files[idx]
-
-        data, sample_hz = torchaudio.load(file)
-
-        assert data.numel() > 0, f'one of your audio file ({file}) is empty. please remove it from your folder'
+        try:
+            file = self.files[idx]
+            data, sample_hz = torchaudio.load(file)
+        except:
+            if self.ignore_load_errors:
+                return None
+            else:
+                raise Exception(f'error loading file {file}')
 
         if data.shape[0] > 1:
             # the audio has more than 1 channel, convert to mono
@@ -127,6 +132,10 @@ class SoundDataset(Dataset):
 def collate_one_or_multiple_tensors(fn):
     @wraps(fn)
     def inner(data):
+        data = list(filter(lambda x: x is not None, data))
+        if len(data) == 0:
+            return () # empty batch
+
         is_one_data = not isinstance(data[0], tuple)
 
         if is_one_data:
