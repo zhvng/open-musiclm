@@ -378,6 +378,7 @@ class ClapRVQTrainer(nn.Module):
         *,
         num_train_steps,
         batch_size,
+        accumulate_initial_batch: Optional[int] = None,
         audio_conditioner: Optional[ClapQuantized] = None,
         dataset: Optional[Dataset] = None,
         ignore_files: Optional[List[str]]=None,
@@ -396,6 +397,7 @@ class ClapRVQTrainer(nn.Module):
         self.audio_conditioner = audio_conditioner
         self.ds = dataset
         self.num_train_steps = num_train_steps
+        self.accumulate_initial_batch = accumulate_initial_batch
         self.register_buffer('steps', torch.Tensor([0]))
 
         if not exists(self.ds):
@@ -453,7 +455,14 @@ class ClapRVQTrainer(nn.Module):
         steps = self.steps.item()
 
         self.audio_conditioner.learn_rvq = True
+    
         raw_wave_for_clap = next(self.dl_iter)[0]
+
+        if steps == 0 and exists(self.accumulate_initial_batch):
+            self.print(f'accumulating {self.accumulate_initial_batch} batches for first pass')
+            for _ in range(self.accumulate_initial_batch - 1):
+                raw_wave_for_clap = torch.cat((raw_wave_for_clap, next(self.dl_iter)[0]), dim=0)
+
         loss = self.audio_conditioner.forward(audio_input=raw_wave_for_clap.to(self.device), return_rvq_loss=True)
         self.print(f'loss: {loss}')
 
