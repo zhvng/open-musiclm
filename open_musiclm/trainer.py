@@ -467,7 +467,7 @@ class ClapRVQTrainer(nn.Module):
         return next(self.parameters()).device
 
     def train_step(self):
-        steps = self.steps.item()
+        steps = int(self.steps.item())
 
         self.audio_conditioner.learn_rvq = True
     
