@@ -22,6 +22,15 @@ def exists(val):
 def cast_tuple(val, length = 1):
     return val if isinstance(val, tuple) else ((val,) * length)
 
+# for quantizing resampled audio
+
+def int16_to_float32(x):
+    return (x / 32767.0).type(torch.float32)
+
+def float32_to_int16(x):
+    x = torch.clamp(x, min=-1., max=1.)
+    return (x * 32767.).type(torch.int16)
+
 # type
 
 OptionalIntOrTupleInt = Optional[Union[int, Tuple[Optional[int], ...]]]
@@ -88,6 +97,7 @@ class SoundDataset(Dataset):
         # resample if target_sample_hz is not None in the tuple
 
         data_tuple = tuple((resample(d, sample_hz, target_sample_hz) if exists(target_sample_hz) else d) for d, target_sample_hz in zip(data, self.target_sample_hz))
+        data_tuple = tuple(int16_to_float32(float32_to_int16(data)) for data in data_tuple)
 
         output = []
 
