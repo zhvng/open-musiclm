@@ -59,7 +59,10 @@ class HfHubertWithKmeans(nn.Module):
             wav_input = curtail_to_multiple(wav_input, self.seq_len_multiple_of)
 
         # normalize wav input
-        wav_input = (wav_input - torch.mean(wav_input, dim=-1, keepdim=True))/torch.std(wav_input, dim=-1, keepdim=True)
+        mean, std = torch.mean(wav_input, dim=-1, keepdim=True), torch.std(wav_input, dim=-1, keepdim=True)
+        wav_input = wav_input - mean
+        non_zero_std = std.squeeze(1) > 0.
+        wav_input[non_zero_std] = wav_input[non_zero_std] / std[non_zero_std]
 
         hubert_args = {
             'input_values': wav_input,

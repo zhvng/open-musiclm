@@ -597,6 +597,8 @@ class HfHubertKmeansTrainer(nn.Module):
 
         features = np.concatenate(features, axis=0)
 
+        features = features[~np.any(np.isnan(features), axis=-1)]
+
         self.print('step 2: training kmeans')
         learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'))
 
