@@ -3,7 +3,7 @@ from pathlib import Path
 import torch
 from torch import nn
 import numpy as np
-from einops import rearrange
+from einops import rearrange, pack, unpack
 from beartype.typing import Optional
 
 from torchaudio.functional import resample
@@ -34,6 +34,7 @@ class HfHubertWithKmeans(nn.Module):
         super().__init__()
         self.target_sample_hz = target_sample_hz
         self.seq_len_multiple_of = seq_len_multiple_of
+        self.codebook_size = kmeans.n_clusters if exists(kmeans) else None
 
         self.embed_layer = embed_layer
 
@@ -75,14 +76,15 @@ class HfHubertWithKmeans(nn.Module):
         if return_embed:
             return embed
 
+        embed, packed_shape = pack([embed], '* d')
         codebook_indices = self.kmeans.predict(embed.detach().cpu().numpy())
-
         codebook_indices = torch.from_numpy(codebook_indices).to(device).long()
 
         if flatten:
             return codebook_indices
-
-        return rearrange(codebook_indices, 'b t -> b t 1')
+        
+        codebook_indices, = unpack(codebook_indices, packed_shape, '*')
+        return codebook_indices
 
 
 def get_kmeans_model(
