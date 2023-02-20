@@ -18,7 +18,7 @@ audio_folder = '../audiolm-train/audio'
 
 print('loading clap...')
 clap_checkpoint = "./checkpoints/clap-laion-audioset-fusion.pt"
-rvq_checkpoint = './results/semantic/semantic.conditioner_rvq.6000.pt'
+rvq_checkpoint = './checkpoints/clap.rvq.950.pt'
 with disable_print():
     clap = create_clap_quantized(device=device, learn_rvq=False, checkpoint_path=clap_checkpoint, rvq_checkpoint_path=rvq_checkpoint).to(device)
 
@@ -38,12 +38,6 @@ fine_transformer = create_fine_transformer(
     num_fine_quantizers=5,
 ).to(device)
 
-corrupted_files = ['fma_small/098/098565.mp3',
-                   'fma_small/098/098567.mp3',
-                   'fma_small/098/098569.mp3',
-                   'fma_small/099/099134.mp3',
-                   'fma_small/108/108925.mp3',
-                   'fma_small/133/133297.mp3']
 trainer = SingleStageTrainer(
     transformer=fine_transformer,
     stage='fine',
@@ -55,7 +49,6 @@ trainer = SingleStageTrainer(
     data_max_seconds=2,
     num_train_steps=7597 * 2,
     results_folder='./results/fine',
-    ignore_files=corrupted_files,
     accelerate_kwargs={
         'log_with': "tensorboard",
         'logging_dir': './logs/fine'

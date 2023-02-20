@@ -12,12 +12,3 @@ class disable_print:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._original_stdout
-
-def get_wav2vec(device):
-    wav2vec = HubertWithKmeans(
-        checkpoint_path = './checkpoints/hubert_base_ls960.pt',
-        kmeans_path = './checkpoints/hubert_base_ls960_L9_km500.bin',
-        target_sample_hz=16000,
-    ).to(device)
-
-    return wav2vec
