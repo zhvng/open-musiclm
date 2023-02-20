@@ -12,26 +12,22 @@ from scripts.train_utils import disable_print
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-clap_checkpoint = "./checkpoints/clap-laion-audioset-fusion.pt"
-# rvq_checkpoint = './results/semantic/semantic.conditioner_rvq.20000.pt'
-with disable_print():
-    clap = create_clap_quantized(device=device, learn_rvq=True, checkpoint_path=clap_checkpoint, rvq_checkpoint_path=None).to(device)
+audio_folder = './data/fma_large'
 
-corrupted_files = ['fma_small/098/098565.mp3',
-                   'fma_small/098/098567.mp3',
-                   'fma_small/098/098569.mp3',
-                   'fma_small/099/099134.mp3',
-                   'fma_small/108/108925.mp3',
-                   'fma_small/133/133297.mp3']
+clap_checkpoint = "./checkpoints/clap-laion-audioset-fusion.pt"
+rvq_checkpoint = None   # './checkpoints/clap.rvq.950.pt'
+with disable_print():
+    clap = create_clap_quantized(device=device, learn_rvq=True, checkpoint_path=clap_checkpoint, rvq_checkpoint_path=rvq_checkpoint).to(device)
+
 trainer = ClapRVQTrainer(
     num_train_steps=1000, 
-    batch_size=32, 
-    audio_conditioner=clap, 
-    folder='../audiolm-train/audio', 
+    batch_size=64,
+    accumulate_initial_batch=2,
+    audio_conditioner=clap,
+    folder=audio_folder,
     results_folder='./results/clap_rvq',
-    ignore_files=corrupted_files,
-    save_model_every=100,
-    save_results_every=50
+    save_model_every=50,
+    save_results_every=25
 ).to(device)
 
 trainer.train()
