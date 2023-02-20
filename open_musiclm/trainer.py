@@ -4,6 +4,7 @@ from pathlib import Path
 from shutil import rmtree
 import torch
 import torch.nn.functional as F
+import numpy as np
 import tqdm
 from accelerate import Accelerator, DistributedType
 from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans, SoundStream
@@ -23,6 +24,7 @@ from typing_extensions import Annotated
 import time
 
 from .clap_quantized import ClapQuantized
+from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
 from .data import SoundDataset, get_dataloader
 from .model_types import NeuralCodec, Wav2Vec
 from .open_musiclm import (CoarseStage, FineStage, SemanticStage,
@@ -380,10 +382,7 @@ class SingleStageTrainer(nn.Module):
 @beartype
 class ClapRVQTrainer(nn.Module):
     """
-    General trainer for any stage of MusicLM.
-        semantic: requires audio_conditioner and wav2vec
-        coarse: requires audio_conditioner, wav2vec, and neural_codec
-        fine: requires audio_conditioner and neural_codec
+    Learn the residual vector quantizer to turn CLAP embeddings into discrete tokens.
     """
 
     def __init__(
@@ -502,11 +501,103 @@ class ClapRVQTrainer(nn.Module):
 
         self.steps += 1
 
-
     def train(self, log_fn=noop):
 
         while self.steps < self.num_train_steps:
             logs = self.train_step()
             log_fn(logs)
+
+        self.print('training complete')
+
+
+@beartype
+class HfHubertKmeansTrainer(nn.Module):
+    """
+    Trainer for kmeans part of HfHubertWithKmeans. Consists of two parts: 1) extracting Hubert features and 2) training kmeans model on these features.
+    """
+
+    def __init__(
+        self,
+        *,
+        feature_extraction_num_steps: int,
+        feature_extraction_batch_size: int,
+        hubert_kmeans: HfHubertWithKmeans,
+        dataset: Optional[Dataset] = None,
+        ignore_files: Optional[List[str]]=None,
+        ignore_load_errors: bool=True,
+        folder=None,
+        data_max_length: Union[int, tuple[int]]=None,
+        results_folder='./results',
+    ):
+        super().__init__()
+
+        self.ds = dataset
+        self.feature_extraction_num_steps = feature_extraction_num_steps
+        self.feature_extraction_batch_size = feature_extraction_batch_size
+        self.hubert_kmeans = hubert_kmeans
+        self.register_buffer('steps', torch.Tensor([0]))
+
+        if not exists(self.ds):
+            assert exists(
+                folder), 'folder must be passed in, if not passing in a custom dataset for text conditioned audio synthesis training'
+
+            self.ds = SoundDataset(
+                folder,
+                max_length=default(data_max_length, 16000),
+                target_sample_hz=hubert_kmeans.target_sample_hz,
+                seq_len_multiple_of=hubert_kmeans.seq_len_multiple_of,
+                ignore_files=default(ignore_files, []),
+                ignore_load_errors=ignore_load_errors
+            )
+        self.print(
+            f'training on {feature_extraction_num_steps * feature_extraction_batch_size} out of {len(self.ds)} samples')
+
+        # dataloader
+
+        self.dl = get_dataloader(self.ds, batch_size=feature_extraction_batch_size, shuffle=True)
+
+        # dataloader iterators
+
+        self.dl_iter = cycle(self.dl)
+
+        self.results_folder = Path(results_folder)
+
+        if len([*self.results_folder.glob('**/*')]) > 0 and yes_or_no('do you want to clear previous experiment checkpoints and results?'):
+            rmtree(str(self.results_folder))
+
+        self.results_folder.mkdir(parents=True, exist_ok=True)
+
+    def print(self, msg):
+        print(msg)
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
+    def extract_hubert_features(self):
+
+        raw_wave = next(self.dl_iter)[0]
+
+        embed = self.hubert_kmeans.forward(wav_input=raw_wave.to(self.device), return_embed=True)
+
+        # get features
+        embed = rearrange(embed, 'b t f -> (b t) f')
+        embed = embed.detach().cpu().numpy()
+
+        return embed
+
+    def train(self, log_fn=noop, seed=0):
+
+        self.print('step 1: extracting features. must wait for this to complete before training kmeans.')
+        features = []
+        while self.steps < self.feature_extraction_num_steps:
+            self.print(f'{int(self.steps.item())} / {self.feature_extraction_num_steps} steps')
+            features.append(self.extract_hubert_features())
+            self.steps += 1
+
+        features = np.concatenate(features, axis=0)
+
+        self.print('step 2: training kmeans')
+        learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'))
 
         self.print('training complete')
