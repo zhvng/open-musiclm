@@ -16,7 +16,7 @@ from scripts.train_utils import disable_print
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-audio_folder = '../audiolm-train/audio'
+audio_folder = './data/fma_large'
 
 print('loading clap...')
 clap_checkpoint = "./checkpoints/clap-laion-audioset-fusion.pt"
@@ -31,7 +31,7 @@ wav2vec = get_hubert_kmeans(
 ).to(device)
 
 print('loading encodec')
-encodec_wrapper = create_encodec_24khz(bandwidth=12.).to(device)
+encodec_wrapper = create_encodec_24khz(bandwidth=6.).to(device)
 
 # 8 tokens per timestep @ 75 Hz
 # lets do 3 coarse 5 fine
@@ -56,7 +56,7 @@ trainer = SingleStageTrainer(
     batch_size=2,
     grad_accum_every=8,
     data_max_seconds=4,
-    num_train_steps=7597 * 2,
+    num_train_steps=10000,
     results_folder='./results/coarse',
     accelerate_kwargs={
         'log_with': "tensorboard",
