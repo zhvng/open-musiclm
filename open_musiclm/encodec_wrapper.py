@@ -2,13 +2,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from beartype import beartype
-from beartype.typing import Dict, List, Literal, Optional, Union
 from einops import rearrange
 from encodec import EncodecModel
-from encodec.utils import convert_audio
 from torch import nn
-from transformers import RobertaTokenizer
-from vector_quantize_pytorch import ResidualVQ
 
 from .utils import exists
 

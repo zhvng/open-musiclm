@@ -7,11 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import tqdm
 from accelerate import Accelerator, DistributedType
-from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans, SoundStream
-from audiolm_pytorch.hubert_kmeans import HubertWithKmeans
 from audiolm_pytorch.optimizer import get_optimizer
-from audiolm_pytorch.t5 import DEFAULT_T5_NAME
-from audiolm_pytorch.vq_wav2vec import FairseqVQWav2Vec
 from beartype import beartype
 from beartype.door import is_bearable
 from beartype.typing import Dict, List, Literal, Optional, Union

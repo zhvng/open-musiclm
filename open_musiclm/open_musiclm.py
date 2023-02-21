@@ -4,11 +4,9 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from audiolm_pytorch import SoundStream
 from beartype import beartype
-from beartype.typing import Dict, List, Optional, Union
+from beartype.typing import List, Optional
 from einops import rearrange, reduce, repeat
-from einops.layers.torch import Rearrange
 from torch import einsum, nn
 
 from .clap_quantized import ClapQuantized
