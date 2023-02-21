@@ -22,6 +22,8 @@ SoundStream and Encodec are both neural audio codecs that encode any waveform to
 # End Goal
 The goal of this project is to replicate the results of MusicLM as quickly as possible without necessarily sticking to the architecture in the paper. For those looking for a more true-to-form implementation, check out [musiclm-pytorch](https://github.com/lucidrains/musiclm-pytorch). 
 
+We also seek to gain a better understanding of CLAP's latent space.
+
 # Thank you
 * [@lucidrains](https://github.com/lucidrains/) for the [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
 * [LAION](https://laion.ai/) for [CLAP](https://github.com/LAION-AI/CLAP)
