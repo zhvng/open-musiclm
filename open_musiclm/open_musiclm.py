@@ -395,9 +395,17 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
 
 @beartype
-def create_semantic_transformer(dim=1024, depth=6, clap_codebook_size=1024, semantic_codebook_size=1024, **kwargs):
+def create_semantic_transformer(
+    dim=1024,
+    depth=6,
+    clap_codebook_size=1024,
+    semantic_codebook_size=1024,
+    num_clap_quantizers=12,
+    **kwargs
+):
 
-    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
+    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=num_clap_quantizers,
+                                      unique_consecutive=False)
     semantic_sequence = TokenSequenceInfo(codebook_size=semantic_codebook_size,
                                           num_quantizers=1, unique_consecutive=True)
 
@@ -405,9 +413,19 @@ def create_semantic_transformer(dim=1024, depth=6, clap_codebook_size=1024, sema
 
 
 @beartype
-def create_coarse_transformer(dim=512, depth=6, clap_codebook_size=1024, semantic_codebook_size=1024, acoustic_codebook_size=1024, num_coarse_quantizers=4, **kwargs):
+def create_coarse_transformer(
+    dim=512,
+    depth=6,
+    clap_codebook_size=1024,
+    semantic_codebook_size=1024,
+    acoustic_codebook_size=1024,
+    num_clap_quantizers=12,
+    num_coarse_quantizers=4,
+    **kwargs
+):
 
-    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
+    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=num_clap_quantizers,
+                                      unique_consecutive=False)
     semantic_sequence = TokenSequenceInfo(codebook_size=semantic_codebook_size,
                                           num_quantizers=1, unique_consecutive=True)
     coarse_sequence = TokenSequenceInfo(
@@ -417,9 +435,19 @@ def create_coarse_transformer(dim=512, depth=6, clap_codebook_size=1024, semanti
 
 
 @beartype
-def create_fine_transformer(dim=512, depth=6, clap_codebook_size=1024, acoustic_codebook_size=1024, num_coarse_quantizers=4, num_fine_quantizers=8, **kwargs):
+def create_fine_transformer(
+    dim=512,
+    depth=6,
+    clap_codebook_size=1024,
+    acoustic_codebook_size=1024,
+    num_clap_quantizers=12,
+    num_coarse_quantizers=4,
+    num_fine_quantizers=8,
+    **kwargs
+):
 
-    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=12, unique_consecutive=False)
+    clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=num_clap_quantizers,
+                                      unique_consecutive=False)
     coarse_sequence = TokenSequenceInfo(codebook_size=acoustic_codebook_size,
                                         num_quantizers=num_coarse_quantizers, unique_consecutive=False)
     fine_sequence = TokenSequenceInfo(
@@ -846,7 +874,7 @@ class MusicLM(nn.Module):
         )
 
         # sliding windows of coarse window size 
-        window_size = int(coarse_window_seconds * semantic_steps_per_second)
+        window_size = int(coarse_window_seconds * semantic_steps_per_second - 1)
         step_size = int(window_size * coarse_sliding_window_step_percent)
         all_semantic_token_ids = all_semantic_token_ids.unfold(1, window_size, step_size)
         all_semantic_token_ids = rearrange(all_semantic_token_ids, 'b n q w -> n b w q')
