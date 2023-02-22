@@ -255,7 +255,10 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         if exists(pred_token_ids):
             assert pred_token_ids.shape[0] == batch
+            init_pred_time_step = pred_token_ids.shape[1]
+            pred_token_ids = rearrange(pred_token_ids, 'b ... -> b (...)')
         else:
+            init_pred_time_step = 0
             pred_token_ids = torch.empty((batch, 0), device=device, dtype=torch.long)
 
         pred_sequence_info, pred_eos_id = self.token_sequences[-1], self.eos_ids[-1]
@@ -275,7 +278,6 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         # initialize
 
-        init_pred_time_step = pred_token_ids.shape[-1]
         sampled_pred_token_ids = pred_token_ids.clone()
 
         for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
@@ -602,6 +604,7 @@ class CoarseStage(nn.Module):
         self,
         *,
         semantic_token_ids: torch.Tensor,
+        coarse_token_ids: Optional[torch.Tensor] = None,
         conditioning_text: Optional[List[str]] = None,
         conditioning_audio: Optional[torch.Tensor] = None,
         clap_token_ids: Optional[torch.Tensor] = None,
@@ -614,7 +617,6 @@ class CoarseStage(nn.Module):
         **kwargs
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
-        coarse_token_ids = None
 
         sampled_tokens = self.transformer_wrapper.generate(
             conditioning_token_ids=[clap_token_ids, semantic_token_ids],
@@ -823,49 +825,63 @@ class MusicLM(nn.Module):
         prime_wave=None,
         output_seconds=8,
         semantic_window_seconds=8,
-        coarse_window_seconds=6,
+        coarse_window_seconds=4,
         fine_window_seconds=2,
-        semantic_steps_per_second=50, # TODO: Get actual number
+        semantic_steps_per_second=50, # Note: for Hubert its actually 50 * seconds - 1
         acoustic_steps_per_second=75, # 75 for encodec, 50 for soundstream
         return_coarse_generated_wave=False,
-        mask_out_generated_fine_tokens=False
+        mask_out_generated_fine_tokens=False,
+        coarse_sliding_window_step_percent=0.5,
     ):
         assert exists(text), 'text needs to be passed in if one of the transformer requires conditioning'
-        assert output_seconds <= semantic_window_seconds, 'no sliding semantic winodow (for now)'
+        assert output_seconds <= semantic_window_seconds, 'no sliding semantic window (for now)'
 
         clap_token_ids = get_or_compute_clap_token_ids(None, self.clap, conditioning_audio=None, conditioning_text=text)
 
         all_semantic_token_ids = self.semantic.generate(
             clap_token_ids=clap_token_ids,
-            max_time_steps=output_seconds * semantic_steps_per_second,
+            max_time_steps=int(output_seconds * semantic_steps_per_second),
             include_eos_in_output=False,
             append_eos_to_conditioning_tokens=True,
         )
 
-        # crop to coarse window length and iterate 
-        all_semantic_token_ids = torch.split(all_semantic_token_ids, coarse_window_seconds * semantic_steps_per_second, dim=1)
+        # sliding windows of coarse window size 
+        window_size = int(coarse_window_seconds * semantic_steps_per_second)
+        step_size = int(window_size * coarse_sliding_window_step_percent)
+        all_semantic_token_ids = all_semantic_token_ids.unfold(1, window_size, step_size)
+        all_semantic_token_ids = rearrange(all_semantic_token_ids, 'b n q w -> n b w q')
 
-        all_coarse_token_ids_or_recon_wave = []
+        all_coarse_token_ids = None
         for semantic_token_ids in all_semantic_token_ids:
             # TODO: pad to coarse_window_seconds if needed
-            coarse_token_ids_or_recon_wave = self.coarse.generate(
+
+            condition_length = int(coarse_window_seconds * acoustic_steps_per_second * (1 - coarse_sliding_window_step_percent))
+            condition_coarse_token_ids = all_coarse_token_ids[:, -condition_length:] if exists(all_coarse_token_ids) else None
+
+            pred_coarse_token_ids = self.coarse.generate(
                 clap_token_ids=clap_token_ids,
                 semantic_token_ids=semantic_token_ids,
-                max_time_steps=coarse_window_seconds * acoustic_steps_per_second,
-                reconstruct_wave=return_coarse_generated_wave,
+                coarse_token_ids=condition_coarse_token_ids,
+                max_time_steps=int(coarse_window_seconds * acoustic_steps_per_second),
+                reconstruct_wave=False,
                 include_eos_in_output=False,
                 append_eos_to_conditioning_tokens=True,
                 temperature=0.95,
             )
 
-            all_coarse_token_ids_or_recon_wave.append(coarse_token_ids_or_recon_wave)
+            if not exists(all_coarse_token_ids):
+                all_coarse_token_ids = pred_coarse_token_ids
+            else:
+                pred_coarse_token_ids = pred_coarse_token_ids[:, condition_length:]
+                all_coarse_token_ids = torch.cat([all_coarse_token_ids, pred_coarse_token_ids], dim=1)
 
         if return_coarse_generated_wave:
-            return torch.cat(all_coarse_token_ids_or_recon_wave, dim=-1).detach().cpu()
+            wave = self.neural_codec.decode_from_codebook_indices(all_coarse_token_ids)
+            wave = rearrange(wave, 'b 1 n -> b n')
+            return wave.detach().cpu()
 
         # crop to fine window length and iterate 
-        all_coarse_token_ids_or_recon_wave = torch.cat(all_coarse_token_ids_or_recon_wave, dim=-2)
-        all_coarse_token_ids = torch.split(all_coarse_token_ids_or_recon_wave, fine_window_seconds * acoustic_steps_per_second, dim=1)
+        all_coarse_token_ids = torch.split(all_coarse_token_ids, fine_window_seconds * acoustic_steps_per_second, dim=1)
 
         generated_waves = []
         for coarse_token_ids in all_coarse_token_ids:
