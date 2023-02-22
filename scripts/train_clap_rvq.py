@@ -22,12 +22,12 @@ with disable_print():
 trainer = ClapRVQTrainer(
     num_train_steps=1000, 
     batch_size=64,
-    accumulate_initial_batch=2,
+    accumulate_batches=8,
     audio_conditioner=clap,
     folder=audio_folder,
     results_folder='./results/clap_rvq',
-    save_model_every=50,
-    save_results_every=25
+    save_model_every=10,
+    save_results_every=5
 ).to(device)
 
 trainer.train()

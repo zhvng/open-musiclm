@@ -66,7 +66,7 @@ class ClapQuantized(nn.Module):
             commitment_weight=0,  # embeddings are frozen so no need for commitment loss
             decay=rq_ema_decay,
             kmeans_init=True,
-            threshold_ema_dead_code=0,
+            threshold_ema_dead_code=1,
         )
 
     def get_mel(self, audio_data):
@@ -221,6 +221,12 @@ class ClapQuantized(nn.Module):
         if return_embedding:
             return embedding
 
+        return self.quantize(embedding, return_rvq_loss=return_rvq_loss)
+
+    def quantize(self, embedding, return_rvq_loss=False):
+        """
+        Quantize an embedding and optionally return the loss
+        """
         with torch.set_grad_enabled(self.learn_rvq):
             self.rq.train(self.learn_rvq)
             q, indices, _ = self.rq(rearrange(embedding, 'n c -> n 1 c'))
@@ -228,7 +234,7 @@ class ClapQuantized(nn.Module):
         if return_rvq_loss:
             return F.mse_loss(q, rearrange(embedding, 'n c -> n 1 c')).item()
 
-        indices = rearrange(indices, 'n 1 c -> n c 1') 
+        indices = rearrange(indices, 'n 1 c -> n c 1')
         return indices
 
 
