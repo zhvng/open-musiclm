@@ -140,7 +140,7 @@ class SingleStageTrainer(nn.Module):
                 semantic_transformer=transformer,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
-                cross_entropy_loss_weights=default(cross_entropy_loss_weights([0., 1.]))
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 1.])
             )
             self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic')
             target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz)
