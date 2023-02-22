@@ -110,6 +110,7 @@ class SingleStageTrainer(nn.Module):
         data_max_seconds: Optional[Union[float, int]]=None,
         data_max_length: Union[int, tuple[int]]=None,
         ignore_files: Optional[List[str]]=None,
+        cross_entropy_loss_weights: Optional[List[float]]=None,
         ignore_load_errors=True,
         folder=None,
         lr=3e-4,
@@ -139,6 +140,7 @@ class SingleStageTrainer(nn.Module):
                 semantic_transformer=transformer,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights([0., 1.]))
             )
             self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic')
             target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz)
@@ -150,6 +152,7 @@ class SingleStageTrainer(nn.Module):
                 neural_codec=neural_codec,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.])
             )
             self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic', 'raw_wave_for_acoustic')
             target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz, neural_codec.sample_rate)
@@ -160,6 +163,7 @@ class SingleStageTrainer(nn.Module):
                 fine_transformer=transformer,
                 clap=audio_conditioner,
                 neural_codec=neural_codec,
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.])
             )
             self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_acoustic')
             target_sample_hz = (audio_conditioner.sample_rate, neural_codec.sample_rate)
