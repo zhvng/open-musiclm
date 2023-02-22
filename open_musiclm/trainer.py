@@ -255,21 +255,23 @@ class SingleStageTrainer(nn.Module):
             hps['data_max_length'] = data_max_length
         self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
 
-    def save(self, path):
-        pkg = dict(
-            model=self.accelerator.get_state_dict(self.transformer),
-            optim=self.optim.state_dict()
-        )
-        torch.save(pkg, path)
+    def save(self, model_path, optim_path):
+        model_state_dict = self.accelerator.get_state_dict(self.transformer)
+        torch.save(model_state_dict, model_path)
 
-    def load(self, path):
-        path = Path(path)
-        assert path.exists()
-        pkg = torch.load(str(path))
+        optim_state_dict = self.optim.state_dict()
+        torch.save(optim_state_dict, optim_path)
+      
+    def load(self, model_path, optim_path):
+        model_path = Path(model_path)
+        optim_path = Path(optim_path)
+        assert model_path.exists() and optim_path.exists()
 
+        model_state_dict = torch.load(model_path, map_location=self.device)
+        optim_state_dict = torch.load(optim_path, map_location=self.device)
         transformer = self.accelerator.unwrap_model(self.transformer)
-        transformer.load_state_dict(pkg['model'])
-        self.optim.load_state_dict(pkg['optim'])
+        transformer.load_state_dict(model_state_dict)
+        self.optim.load_state_dict(optim_state_dict)
 
     def print(self, msg):
         self.accelerator.print(msg)
@@ -352,11 +354,13 @@ class SingleStageTrainer(nn.Module):
         # save model every so often
 
         if self.is_main and not (steps % self.save_model_every):
-            state_dict = self.transformer.state_dict()
-            model_path = str(self.results_folder / f'{self.stage}.transformer.{steps}.pt')
-            torch.save(state_dict, model_path)
 
             self.print(f'{steps}: saving model to {str(self.results_folder)}')
+
+            model_path = str(self.results_folder / f'{self.stage}.transformer.{steps}.pt')
+            optim_path = str(self.results_folder / f'{self.stage}.optimizer.{steps}.pt')
+
+            self.save(model_path, optim_path)
 
             # save audio conditioner (clap) rvq checkpoint
             if self.audio_conditioner.learn_rvq:
