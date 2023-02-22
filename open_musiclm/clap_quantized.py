@@ -66,7 +66,7 @@ class ClapQuantized(nn.Module):
             commitment_weight=0,  # embeddings are frozen so no need for commitment loss
             decay=rq_ema_decay,
             kmeans_init=True,
-            threshold_ema_dead_code=1,
+            threshold_ema_dead_code=0,
         )
 
     def get_mel(self, audio_data):
