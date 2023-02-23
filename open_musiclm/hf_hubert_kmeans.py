@@ -16,6 +16,14 @@ import logging
 logging.root.setLevel(logging.ERROR)
 
 
+def normalize_unit_variance(x):
+    mean = torch.mean(x, dim=-1, keepdim=True)
+    x = x - mean
+    std = torch.std(x, dim=-1, keepdim=True)
+    non_zero_std = std.squeeze(-1) > 0.
+    x[non_zero_std] = x[non_zero_std] / std[non_zero_std]
+    return x
+
 class HfHubertWithKmeans(nn.Module):
     """
     Hugging Face HubertModel + a k-means layer on top. Pretrained checkpoint for music: https://huggingface.co/m-a-p/MERT-v0
@@ -60,10 +68,7 @@ class HfHubertWithKmeans(nn.Module):
             wav_input = curtail_to_multiple(wav_input, self.seq_len_multiple_of)
 
         # normalize wav input
-        mean, std = torch.mean(wav_input, dim=-1, keepdim=True), torch.std(wav_input, dim=-1, keepdim=True)
-        wav_input = wav_input - mean
-        non_zero_std = std.squeeze(1) > 0.
-        wav_input[non_zero_std] = wav_input[non_zero_std] / std[non_zero_std]
+        wav_input = normalize_unit_variance(wav_input) 
 
         hubert_args = {
             'input_values': wav_input,
@@ -72,6 +77,8 @@ class HfHubertWithKmeans(nn.Module):
 
         outputs = self.hubert(**hubert_args, output_hidden_states = True)
         embed = outputs.hidden_states[self.embed_layer]
+
+        embed = normalize_unit_variance(embed)
 
         if return_embed:
             return embed
