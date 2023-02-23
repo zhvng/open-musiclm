@@ -407,7 +407,7 @@ def create_semantic_transformer(
     clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=num_clap_quantizers,
                                       unique_consecutive=False)
     semantic_sequence = TokenSequenceInfo(codebook_size=semantic_codebook_size,
-                                          num_quantizers=1, unique_consecutive=True)
+                                          num_quantizers=1, unique_consecutive=False)
 
     return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence], dim=dim, depth=depth, **kwargs)
 
@@ -427,7 +427,7 @@ def create_coarse_transformer(
     clap_sequence = TokenSequenceInfo(codebook_size=clap_codebook_size, num_quantizers=num_clap_quantizers,
                                       unique_consecutive=False)
     semantic_sequence = TokenSequenceInfo(codebook_size=semantic_codebook_size,
-                                          num_quantizers=1, unique_consecutive=True)
+                                          num_quantizers=1, unique_consecutive=False)
     coarse_sequence = TokenSequenceInfo(
         codebook_size=acoustic_codebook_size, num_quantizers=num_coarse_quantizers, unique_consecutive=False)
 
@@ -503,7 +503,7 @@ class SemanticStage(nn.Module):
         wav2vec: Optional[Wav2Vec] = None,
         clap: Optional[ClapQuantized] = None,
         pad_id=-1,
-        unique_consecutive=True,
+        unique_consecutive=False,
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
@@ -596,7 +596,7 @@ class CoarseStage(nn.Module):
         clap: Optional[ClapQuantized] = None,
         neural_codec: Optional[NeuralCodec] = None,
         pad_id=-1,
-        unique_consecutive=True,
+        unique_consecutive=False,
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
@@ -705,7 +705,7 @@ class FineStage(nn.Module):
         clap: Optional[ClapQuantized] = None,
         neural_codec: Optional[NeuralCodec] = None,
         pad_id=-1,
-        unique_consecutive=True,
+        unique_consecutive=False,
         cross_entropy_loss_weights: List[float] = None,
         mask_prob=0.15
     ):
@@ -808,8 +808,7 @@ class MusicLM(nn.Module):
         neural_codec: NeuralCodec,
         semantic_transformer: TokenConditionedTransformer,
         coarse_transformer: TokenConditionedTransformer,
-        fine_transformer: TokenConditionedTransformer,
-        unique_consecutive=True
+        fine_transformer: TokenConditionedTransformer
     ):
         super().__init__()
 
