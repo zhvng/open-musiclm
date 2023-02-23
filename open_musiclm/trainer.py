@@ -107,8 +107,7 @@ class SingleStageTrainer(nn.Module):
         wav2vec: Optional[Wav2Vec] = None,
         neural_codec: Optional[NeuralCodec] = None,
         audio_conditioner: Optional[ClapQuantized] = None,
-        data_max_seconds: Optional[Union[float, int]]=None,
-        data_max_length: Union[int, tuple[int]]=None,
+        data_max_length_seconds: Union[float, int] = 1,
         ignore_files: Optional[List[str]]=None,
         cross_entropy_loss_weights: Optional[List[float]]=None,
         ignore_load_errors=True,
@@ -172,9 +171,6 @@ class SingleStageTrainer(nn.Module):
         else:
             raise ValueError(f'invalid stage: {stage}')
 
-        if exists(data_max_seconds):
-            data_max_length = tuple([int(data_max_seconds * hz) for hz in target_sample_hz])
-
         self.register_buffer('steps', torch.Tensor([0]))
 
         self.num_train_steps = num_train_steps
@@ -198,7 +194,7 @@ class SingleStageTrainer(nn.Module):
 
             self.ds = SoundDataset(
                 folder,
-                max_length=data_max_length,
+                max_length_seconds=data_max_length_seconds,
                 target_sample_hz=target_sample_hz,
                 seq_len_multiple_of=seq_len_multiple_of,
                 ignore_files=default(ignore_files, []),
@@ -255,10 +251,7 @@ class SingleStageTrainer(nn.Module):
         self.results_folder.mkdir(parents=True, exist_ok=True)
 
         hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
-        if exists(data_max_seconds):
-            hps['data_max_seconds'] = data_max_seconds
-        if type(data_max_length) is int:
-            hps['data_max_length'] = data_max_length
+        hps['data_max_length_seconds'] = data_max_length_seconds
         self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
 
     def save(self, model_path, optim_path):
@@ -417,7 +410,7 @@ class ClapRVQTrainer(nn.Module):
         folder=None,
         wd=0.,
         max_grad_norm=0.5,
-        data_max_length: Union[int, tuple[int]]=None,
+        data_max_length_seconds: Union[float, int] = 10,
         valid_frac=0.05,
         random_split_seed=42,
         save_results_every=100,
@@ -438,7 +431,7 @@ class ClapRVQTrainer(nn.Module):
 
             self.ds = SoundDataset(
                 folder,
-                max_length=default(data_max_length, self.audio_conditioner.sample_rate * 10),
+                max_length_seconds=data_max_length_seconds,
                 target_sample_hz=audio_conditioner.sample_rate,
                 seq_len_multiple_of=None,
                 ignore_files=default(ignore_files, []),
@@ -548,7 +541,7 @@ class HfHubertKmeansTrainer(nn.Module):
         ignore_files: Optional[List[str]]=None,
         ignore_load_errors: bool=True,
         folder=None,
-        data_max_length: Union[int, tuple[int]]=None,
+        data_max_length_seconds: Union[float, int] = 1,
         results_folder='./results',
     ):
         super().__init__()
@@ -565,7 +558,7 @@ class HfHubertKmeansTrainer(nn.Module):
 
             self.ds = SoundDataset(
                 folder,
-                max_length=default(data_max_length, 16000),
+                max_length_seconds=data_max_length_seconds,
                 target_sample_hz=hubert_kmeans.target_sample_hz,
                 seq_len_multiple_of=hubert_kmeans.seq_len_multiple_of,
                 ignore_files=default(ignore_files, []),

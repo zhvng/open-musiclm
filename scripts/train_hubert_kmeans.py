@@ -20,7 +20,7 @@ hubert_kmeans = get_hubert_kmeans(model_name='m-a-p/MERT-v0', kmeans_path=None)
 trainer = HfHubertKmeansTrainer(
     feature_extraction_num_steps=100,
     feature_extraction_batch_size=64,
-    data_max_length=16000*8,
+    data_max_length_seconds=1,
     hubert_kmeans=hubert_kmeans,
     folder=audio_folder,
     results_folder='./results/hubert_kmeans',

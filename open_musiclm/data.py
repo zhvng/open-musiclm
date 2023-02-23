@@ -43,7 +43,7 @@ class SoundDataset(Dataset):
         self,
         folder,
         exts = ['flac', 'wav', 'mp3'],
-        max_length: OptionalIntOrTupleInt = None,
+        max_length_seconds: Union[float, int]=1,
         target_sample_hz: OptionalIntOrTupleInt = None,
         seq_len_multiple_of: OptionalIntOrTupleInt = None,
         ignore_files: Optional[List[str]] = None,
@@ -69,7 +69,9 @@ class SoundDataset(Dataset):
         self.target_sample_hz = cast_tuple(target_sample_hz)
         num_outputs = len(self.target_sample_hz)
 
-        self.max_length = cast_tuple(max_length, num_outputs)
+        self.max_length_seconds = max_length_seconds
+        self.max_length = tuple([int(max_length_seconds * hz) for hz in self.target_sample_hz])
+
         self.seq_len_multiple_of = cast_tuple(seq_len_multiple_of, num_outputs)
 
         assert len(self.max_length) == len(self.target_sample_hz) == len(self.seq_len_multiple_of)
@@ -91,10 +93,22 @@ class SoundDataset(Dataset):
             # the audio has more than 1 channel, convert to mono
             data = torch.mean(data, dim=0).unsqueeze(0)
 
-        num_outputs = len(self.target_sample_hz)
-        data = cast_tuple(data, num_outputs)
+        # crop or pad to max_length_seconds
+
+        audio_length = data.size(1)
+        target_length = int(self.max_length_seconds * sample_hz)
+
+        if audio_length > target_length:
+            max_start = audio_length - target_length
+            start = torch.randint(0, max_start, (1, ))
+            data = data[:, start:start + target_length]
+        else:
+            data = F.pad(data, (0, target_length - audio_length), 'constant')
 
         # resample if target_sample_hz is not None in the tuple
+
+        num_outputs = len(self.target_sample_hz)
+        data = cast_tuple(data, num_outputs)
 
         data_tuple = tuple((resample(d, sample_hz, target_sample_hz) if exists(target_sample_hz) else d) for d, target_sample_hz in zip(data, self.target_sample_hz))
         data_tuple = tuple(int16_to_float32(float32_to_int16(data)) for data in data_tuple)
@@ -106,20 +120,9 @@ class SoundDataset(Dataset):
         for data, max_length, seq_len_multiple_of in zip(data_tuple, self.max_length, self.seq_len_multiple_of):
             audio_length = data.size(1)
 
-            # pad or curtail
-
-            if audio_length > max_length:
-                max_start = audio_length - max_length
-                start = torch.randint(0, max_start, (1, ))
-                data = data[:, start:start + max_length]
-
-            else:
-                data = F.pad(data, (0, max_length - audio_length), 'constant')
+            assert audio_length == max_length, f'audio length {audio_length} does not match max_length {max_length}.'
 
             data = rearrange(data, '1 ... -> ...')
-
-            if exists(max_length):
-                data = data[:max_length]
 
             if exists(seq_len_multiple_of):
                 data = curtail_to_multiple(data, seq_len_multiple_of)
