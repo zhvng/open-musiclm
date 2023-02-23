@@ -126,7 +126,7 @@ class TokenConditionedTransformer(nn.Module):
             tokens.append(token_embeddings)
             start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 
-            n_tokens = token_embeddings.shape[1] + 1 # +1 for end token
+            n_tokens = token_embeddings.shape[1] + 1 # +1 for start token of next sequence
             split_at.append(n_tokens if len(split_at) == 0 else split_at[-1] + n_tokens)
 
         tokens = list(itertools.chain(*zip(start_tokens, tokens)))  # [start_1, tokens_1, start_2, tokens_2, ...]
@@ -137,8 +137,11 @@ class TokenConditionedTransformer(nn.Module):
         split_at = split_at[:-1]  # remove last element (total number of tokens)
         all_pred_tokens = torch.tensor_split(tokens, split_at, dim=1)
 
-        # strip eos token from all sequences besides end
-        all_pred_tokens = [pred_tokens[:, :-1] for pred_tokens in all_pred_tokens[:-1]] +  [all_pred_tokens[-1]]
+        # strip next start token from end of every sequence besides last
+        # in tokens: s1 t1 t2 t3 t4 .. e1   s2 t1 t2 t3 t4 e2 
+        # out logit: t1 t2 t3 t4 .. e1 s2   t1 t2 t3 t4 e2
+        # split:    [t2 t2 t3 t4 .. e1 s2] [t1 t2 t3 t4 e2]
+        all_pred_tokens = [pred_tokens[:, :-1] for pred_tokens in all_pred_tokens[:-1]] + [all_pred_tokens[-1]]
 
         # get logits
 
