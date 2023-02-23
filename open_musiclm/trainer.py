@@ -120,6 +120,7 @@ class SingleStageTrainer(nn.Module):
         valid_frac=0.05,
         random_split_seed=42,
         save_results_every=100,
+        save_predicted_tokens=True,
         save_model_every=1000,
         results_folder='./results',
         accelerate_kwargs: dict = {}
@@ -244,6 +245,7 @@ class SingleStageTrainer(nn.Module):
 
         self.save_model_every = save_model_every
         self.save_results_every = save_results_every
+        self.save_predicted_tokens = save_predicted_tokens
 
         self.results_folder = Path(results_folder)
 
@@ -319,7 +321,7 @@ class SingleStageTrainer(nn.Module):
                 if len(data_kwargs) == 0:
                     continue
 
-                loss = self.train_wrapper(**data_kwargs, return_loss=True)
+                loss, _, _ = self.train_wrapper(**data_kwargs, return_loss=True)
 
                 self.accelerator.backward(loss / self.grad_accum_every)
 
@@ -349,11 +351,24 @@ class SingleStageTrainer(nn.Module):
                 
                 with torch.no_grad():
                     self.train_wrapper.eval()
-                    valid_loss = self.train_wrapper(**data_kwargs, return_loss=True)
+                    valid_loss, all_logits, all_labels = self.train_wrapper(**data_kwargs, return_loss=True)
 
                 self.print(f'{steps}: valid loss {valid_loss}')
                 self.accelerator.log({"valid_loss": valid_loss}, step=steps)
-                non_empty_batch = True
+
+                if self.save_predicted_tokens:
+                    # interleave pred_tokens and gt_tokens and save to a text file
+
+                    pred_tokens = all_logits[-1].detach().cpu().argmax(1).long()
+                    gt_tokens = all_labels[-1].detach().cpu().long()
+
+                    interleave = torch.empty((pred_tokens.shape[0] + gt_tokens.shape[0], pred_tokens.shape[1]), dtype=pred_tokens.dtype)
+                    interleave[0::2] = pred_tokens
+                    interleave[1::2] = gt_tokens
+
+                    np.savetxt(str(self.results_folder / f'{self.stage}.tokens.{steps}.txt'), interleave, fmt='%-6s', header='predicted and ground truth tokens from the validation set. row 0%2 is predicted, 1%2 is ground truth\n ')
+
+                    non_empty_batch = True
 
         # save model every so often
 

@@ -391,7 +391,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
             total_logits += num_logits
             running_loss += loss * num_logits * cross_entropy_loss_weight
 
-        return running_loss / total_logits
+        return running_loss / total_logits, all_logits, all_labels
 
 
 @beartype
