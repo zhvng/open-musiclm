@@ -15,6 +15,7 @@ from beartype.vale import Is
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from torch import einsum, nn
+import torchaudio
 from torch.utils.data import DataLoader, Dataset, random_split
 from typing_extensions import Annotated
 import time
@@ -120,6 +121,7 @@ class SingleStageTrainer(nn.Module):
         random_split_seed=42,
         save_results_every=100,
         save_predicted_tokens=True,
+        save_reconstructed_wave=True,
         save_model_every=1000,
         results_folder='./results',
         accelerate_kwargs: dict = {}
@@ -131,6 +133,7 @@ class SingleStageTrainer(nn.Module):
         self.wav2vec = wav2vec
         self.transformer = transformer
         self.audio_conditioner = audio_conditioner
+        self.neural_codec = neural_codec
 
         self.stage = stage
 
@@ -242,6 +245,7 @@ class SingleStageTrainer(nn.Module):
         self.save_model_every = save_model_every
         self.save_results_every = save_results_every
         self.save_predicted_tokens = save_predicted_tokens
+        self.save_reconstructed_wave = save_reconstructed_wave
 
         self.results_folder = Path(results_folder)
 
@@ -249,6 +253,13 @@ class SingleStageTrainer(nn.Module):
             rmtree(str(self.results_folder))
 
         self.results_folder.mkdir(parents=True, exist_ok=True)
+
+        if exists(save_reconstructed_wave):
+            self.waves_folder = self.results_folder / 'reconstructed_waves'
+            self.waves_folder.mkdir(parents=True, exist_ok=True)
+        if exists(save_predicted_tokens):
+            self.tokens_folder = self.results_folder / 'tokens'
+            self.tokens_folder.mkdir(parents=True, exist_ok=True)
 
         hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
         hps['data_max_length_seconds'] = data_max_length_seconds
@@ -352,6 +363,8 @@ class SingleStageTrainer(nn.Module):
                 if self.save_predicted_tokens:
                     # interleave pred_tokens and gt_tokens and save to a text file
 
+                    assert exists(self.tokens_folder)
+
                     pred_tokens = all_logits[-1].detach().cpu().argmax(1).long()
                     gt_tokens = all_labels[-1].detach().cpu().long()
 
@@ -359,9 +372,32 @@ class SingleStageTrainer(nn.Module):
                     interleave[0::2] = pred_tokens
                     interleave[1::2] = gt_tokens
 
-                    np.savetxt(str(self.results_folder / f'{self.stage}.tokens.{steps}.txt'), interleave, fmt='%-6s', header='predicted and ground truth tokens from the validation set. row 0%2 is predicted, 1%2 is ground truth\n ')
+                    np.savetxt(str(self.tokens_folder / f'{self.stage}.tokens.{steps}.txt'), interleave, fmt='%-6s', header='predicted and ground truth tokens from the validation set. row 0%2 is predicted, 1%2 is ground truth\n ')
 
                     non_empty_batch = True
+
+                if self.save_reconstructed_wave and (self.stage == 'coarse' or self.stage=='fine'):
+                    # For coarse and fine stages, reconstruct teacher-forced wave from logits 
+
+                    assert exists(self.neural_codec)
+                    assert exists(self.waves_folder)
+
+                    pred_tokens = all_logits[-1].detach().argmax(1)[:, :-1]
+                    pred_tokens[pred_tokens == self.transformer.eos_ids[-1]] = 0
+
+                    num_quantizers = self.transformer.token_sequences[-1].num_quantizers
+                    pred_tokens = rearrange(pred_tokens, 'b (n q) -> b n q', q=num_quantizers)
+
+                    if self.stage == 'fine':
+                        coarse_tokens = all_labels[-2][:, :-1]
+                        coarse_quantizers = self.transformer.token_sequences[-2].num_quantizers
+                        coarse_tokens = rearrange(coarse_tokens, 'b (n q) -> b n q', q=coarse_quantizers)
+                        pred_tokens = torch.cat((coarse_tokens, pred_tokens), dim=-1)
+                    
+                    waves = self.neural_codec.decode_from_codebook_indices(pred_tokens)
+                    waves = waves.cpu()
+                    for i, wave in enumerate(waves):
+                        torchaudio.save(str(self.waves_folder / f'{self.stage}.reconstructed_wave_{i}.{steps}.wav'), wave, self.neural_codec.sample_rate)
 
         # save model every so often
 
