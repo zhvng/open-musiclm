@@ -157,8 +157,8 @@ def learn_kmeans(
     print("finished successfully")
 
 
-def get_hubert_kmeans(model_name: str="m-a-p/MERT-v0", kmeans_path: Optional[str]='./checkpoints/kmeans.joblib'):
+def get_hubert_kmeans(model_name: str="m-a-p/MERT-v0", kmeans_path: Optional[str]='./checkpoints/kmeans.joblib', **kwargs):
     wav2vec = HubertModel.from_pretrained(model_name)
     kmeans = joblib.load(kmeans_path) if exists(kmeans_path) else None
 
-    return HfHubertWithKmeans(hubert=wav2vec, kmeans=kmeans)
+    return HfHubertWithKmeans(hubert=wav2vec, kmeans=kmeans, **kwargs)
