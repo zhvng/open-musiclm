@@ -122,7 +122,7 @@ class TokenConditionedTransformer(nn.Module):
                 token_ids = token_ids + offsets
 
             # get embeddings and prepare for next step
-            token_embeddings = get_embeds(embedding, token_ids, pad_id=-1) if sequence.unique_consecutive else embedding(token_ids)
+            token_embeddings = get_embeds(embedding, token_ids, pad_id=-1)
             tokens.append(token_embeddings)
             start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 
@@ -248,6 +248,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         temperature=1.,
         include_eos_in_output=False,
         append_eos_to_conditioning_tokens=True,
+        allow_eos_in_output=False,
         **kwargs
     ):
         assert len(conditioning_token_ids) == len(self.token_sequences) - 1
@@ -295,8 +296,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
                 last_pred_logits = pred_logits[:, -1]
 
-                if not is_last_step:
-                    # prevent from eos if not last quantizer step, but move this to masking logic within the transformer at some point, for both training and eval
+                if not allow_eos_in_output or not is_last_step:
+                    # prevent eos 1) if we don't allow it or 2) in the middle of a time step
                     last_pred_logits[:, -1] = float('-inf')
 
                 filtered_logits = top_k(last_pred_logits, thres=filter_thres)
