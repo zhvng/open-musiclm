@@ -1,5 +1,5 @@
 # Open MusicLM
-Pytorch implementation of [MusicLM](https://arxiv.org/abs/2301.11325), a SOTA text to music model published by Google, with a few modifications. We use [CLAP](https://github.com/LAION-AI/CLAP) as a replacement for MuLan and [Encodec](https://github.com/facebookresearch/encodec) as a replacement for SoundStream. 
+Pytorch implementation of [MusicLM](https://arxiv.org/abs/2301.11325), a SOTA text to music model published by Google, with a few modifications. We use [CLAP](https://github.com/LAION-AI/CLAP) as a replacement for MuLan, [Encodec](https://github.com/facebookresearch/encodec) as a replacement for SoundStream, and [MERT](https://huggingface.co/m-a-p/MERT-v0) as a replacement for w2v-BERT.
 
 <p align='center'>
 <img alt='diagram of MusicLM' src='musiclm.png' title="MusicLM" height='250px'>
@@ -27,6 +27,7 @@ We also seek to gain a better understanding of CLAP's latent space.
 # Thank you
 * [@lucidrains](https://github.com/lucidrains/) for the [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
 * [LAION](https://laion.ai/) for [CLAP](https://github.com/LAION-AI/CLAP)
+* [Music Audio Pretrain team](https://huggingface.co/m-a-p) for [MERT](https://huggingface.co/m-a-p/MERT-v0)
 
 # Citations
 ```bibtex
