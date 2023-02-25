@@ -99,6 +99,7 @@ class Attention(nn.Module):
         self,
         dim,
         causal=False,
+        non_causal_prefix=0,
         dim_head=64,
         dim_context=None,
         heads=8,
@@ -111,6 +112,7 @@ class Attention(nn.Module):
         self.heads = heads
         self.scale = scale
         self.causal = causal
+        self.non_causal_prefix = non_causal_prefix
         inner_dim = dim_head * heads
 
         dim_context = default(dim_context, dim)
@@ -209,6 +211,10 @@ class Attention(nn.Module):
         if self.causal:
             i, j = sim.shape[-2:]
             causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
+
+            if self.non_causal_prefix > 0:
+                causal_mask[:self.non_causal_prefix, :(self.non_causal_prefix + j - i)] = False
+
             sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
 
         # attention
@@ -241,6 +247,7 @@ class Transformer(nn.Module):
         ff_dropout=0.,
         grad_shrink_alpha=0.1,
         cond_as_self_attn_prefix=False,
+        non_causal_prefix_size=0,
         **kwargs
     ):
         super().__init__()
@@ -257,7 +264,7 @@ class Transformer(nn.Module):
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim=dim, heads=heads, dropout=attn_dropout, causal=True, **kwargs),
+                Attention(dim=dim, heads=heads, dropout=attn_dropout, causal=True, non_causal_prefix=non_causal_prefix_size, **kwargs),
                 Attention(dim=dim, heads=heads, dropout=attn_dropout, dim_context=dim_context,
                           num_null_kv=1, norm_context=True, **kwargs) if cross_attend else None,
                 FeedForward(dim=dim, dropout=ff_dropout)
