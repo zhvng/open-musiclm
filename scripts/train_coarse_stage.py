@@ -4,6 +4,7 @@ import sys
 import torch
 from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans
 import argparse
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -27,7 +28,7 @@ if __name__ == '__main__':
     print(f'training on {audio_folder} and saving results to {results_folder}')
     if args.continue_from_dir is not None:
         print(f'continuing from latest checkpoint in {args.continue_from_dir}')
-        assert not os.path.samefile(args.continue_from_dir, results_folder), 'continue_from_dir must be different from results_folder'
+        assert not Path(args.continue_from_dir) == Path(results_folder), 'continue_from_dir must be different from results_folder'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
