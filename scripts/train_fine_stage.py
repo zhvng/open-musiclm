@@ -61,7 +61,7 @@ if __name__ == '__main__':
         transformer=fine_transformer,
         audio_conditioner=clap,
         neural_codec=encodec_wrapper,
-        data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
+        data_max_length_seconds=model_config.global_cfg.fine_audio_length_seconds,
         results_folder=args.results_folder,
         accelerate_kwargs={
             'log_with': "tensorboard",

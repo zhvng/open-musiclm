@@ -73,7 +73,7 @@ if __name__ == '__main__':
         wav2vec=wav2vec,
         neural_codec=encodec_wrapper,
         results_folder=args.results_folder,
-        data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
+        data_max_length_seconds=model_config.global_cfg.coarse_audio_length_seconds,
         accelerate_kwargs={
             'log_with': "tensorboard",
             'logging_dir': './logs/coarse'
