@@ -1,0 +1,64 @@
+{
+    "clap_rvq_trainer_cfg": {
+        "folder": "./data/fma_large",
+        "num_train_steps": 1000,
+        "batch_size": 64,
+        "accumulate_batches": 8,
+        "save_model_every": 10,
+        "save_results_every": 5
+    },
+    "hubert_kmeans_trainer_cfg": {
+        "folder": "./data/fma_large",
+        "feature_extraction_num_steps": 160,
+        "feature_extraction_batch_size": 32,
+        "data_max_length_seconds": 8.0
+    },
+    "semantic_trainer_cfg": {
+        "stage": "semantic",
+        "folder": "./data/fma_large",
+        "valid_frac": 0.05,
+        "lr": 0.0003,
+        "batch_size": 4,
+        "grad_accum_every": 8,
+        "wd": 0.01,
+        "max_grad_norm": 0.5,
+        "cross_entropy_loss_weights": [0.0, 1.0],
+        "num_train_steps": 200001,
+        "save_results_every": 250,
+        "save_model_every": 1000,
+        "save_predicted_tokens": true,
+        "save_reconstructed_wave": true
+    },
+    "coarse_trainer_cfg": {
+        "stage": "coarse",
+        "folder": "./data/fma_large",
+        "valid_frac": 0.05,
+        "lr": 0.0003,
+        "batch_size": 2,
+        "grad_accum_every": 8,
+        "wd": 0.01,
+        "max_grad_norm": 0.5,
+        "cross_entropy_loss_weights": [0.0, 0.0, 1.0],
+        "num_train_steps": 200001,
+        "save_results_every": 250,
+        "save_model_every": 1000,
+        "save_predicted_tokens": true,
+        "save_reconstructed_wave": true
+    },
+    "fine_trainer_cfg": {
+        "stage": "fine",
+        "folder": "./data/fma_large",
+        "valid_frac": 0.05,
+        "lr": 0.0003,
+        "batch_size": 4,
+        "grad_accum_every": 8,
+        "wd": 0.01,
+        "max_grad_norm": 0.5,
+        "cross_entropy_loss_weights": [0.0, 0.0, 1.0],
+        "num_train_steps": 200001,
+        "save_results_every": 250,
+        "save_model_every": 1000,
+        "save_predicted_tokens": true,
+        "save_reconstructed_wave": true
+    }
+}

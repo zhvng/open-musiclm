@@ -1,0 +1,36 @@
+{
+    "clap_rvq_cfg": {
+        "checkpoint_path": "./checkpoints/clap-laion-audioset-fusion.pt",
+        "rq_num_quantizers": 12
+    },
+    "hubert_kmeans_cfg": {
+        "model_name": "m-a-p/MERT-v0",
+        "normalize_input": false,
+        "normalize_embeds": false
+    },
+    "encodec_cfg": {
+        "bandwidth": 6.0
+    },
+    "semantic_cfg": {
+        "dim": 1024,
+        "depth": 6
+    },
+    "coarse_cfg": {
+        "dim": 1024,
+        "depth": 6,
+        "num_clap_quantizers": 12,
+        "num_coarse_quantizers": 3
+    },
+    "fine_cfg": {
+        "dim": 1024,
+        "depth": 6,
+        "num_clap_quantizers": 12,
+        "num_coarse_quantizers": 3,
+        "num_fine_quantizers": 5
+    },
+    "global_cfg": {
+        "semantic_audio_length_seconds": 8.0,
+        "coarse_audio_length_seconds": 4.0,
+        "fine_audio_length_seconds": 2.0
+    }
+}
