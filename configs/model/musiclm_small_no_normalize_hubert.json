@@ -13,7 +13,8 @@
     },
     "semantic_cfg": {
         "dim": 1024,
-        "depth": 6
+        "depth": 6,
+        "num_clap_quantizers": 12
     },
     "coarse_cfg": {
         "dim": 1024,

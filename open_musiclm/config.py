@@ -22,6 +22,7 @@ class EncodecConfig:
 class SemanticConfig:
     dim: int
     depth: int
+    num_clap_quantizers: int
 
 @dataclass
 class CoarseConfig:
