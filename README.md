@@ -25,6 +25,8 @@ The goal of this project is to replicate the results of MusicLM as quickly as po
 
 We also seek to gain a better understanding of CLAP's latent space.
 
+Join us on discord if you'd like to get involved! [<img alt="join discord" src="https://img.shields.io/discord/1079520916591104000?color=%237289da&logo=discord"/>](https://discord.gg/jN8jADShX5)
+
 # Usage
 ## Install
 ```shell
