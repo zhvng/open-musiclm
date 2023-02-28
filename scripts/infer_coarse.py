@@ -10,6 +10,7 @@ example usage:
 python scripts/infer_coarse.py \
     ./data/fma_large/000/000005.mp3 \
     ./data/fma_large/000/000010.mp3 \
+    --model_config ./configs/model/musiclm_small.json \
     --coarse_path ./results/coarse_continue_1/coarse.transformer.10000.pt 
 
 '''
@@ -23,6 +24,7 @@ import torchaudio
 from torchaudio.functional import resample
 from einops import rearrange
 import argparse
+from dataclasses import asdict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -30,54 +32,57 @@ from open_musiclm.clap_quantized import create_clap_quantized
 from open_musiclm.open_musiclm import create_coarse_transformer, get_or_compute_clap_token_ids, get_or_compute_semantic_token_ids, CoarseStage
 from open_musiclm.encodec_wrapper import create_encodec_24khz
 from open_musiclm.hf_hubert_kmeans import get_hubert_kmeans
+from open_musiclm.config import load_model_config 
 from scripts.train_utils import disable_print
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='run inference on coarse stage')
     parser.add_argument('audio_files', type=str, nargs='+')
+    parser.add_argument('--model_config', default='./configs/model/musiclm_small.json', help='path to model config')
     parser.add_argument('--coarse_path', required=True, help='path to coarse stage checkpoint')
-    parser.add_argument('--clap_path', default='./checkpoints/clap-laion-audioset-fusion.pt')
     parser.add_argument('--rvq_path', default='./checkpoints/clap.rvq.350.pt')
     parser.add_argument('--kmeans_path', default='./results/hubert_kmeans/kmeans.joblib')
     parser.add_argument('--seed', default=0)
 
     args = parser.parse_args()
+    
+    model_config = load_model_config(args.model_config)
 
     audio_files = args.audio_files
     coarse_path = args.coarse_path
     kmeans_path = args.kmeans_path
-    clap_path = args.clap_path
     rvq_path = args.rvq_path
     seed = args.seed
 
     print(f'running inference on {audio_files}')
-    print(f'coarse_path: {coarse_path}, kmeans_path: {kmeans_path}, clap_path: {clap_path}, rvq_path: {rvq_path}, seed: {seed}')
+    print(f'coarse_path: {coarse_path}, kmeans_path: {kmeans_path}, rvq_path: {rvq_path}, seed: {seed}')
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     print('loading clap...')
     with disable_print():
-        clap = create_clap_quantized(device=device, learn_rvq=False, checkpoint_path=clap_path, rvq_checkpoint_path=rvq_path).to(device)
+        clap = create_clap_quantized(
+            device=device, 
+            learn_rvq=False, 
+            rvq_checkpoint_path=args.rvq_path,
+            **asdict(model_config.clap_rvq_cfg),
+        ).to(device)
 
     print('loading wav2vec...')
     wav2vec = get_hubert_kmeans(
-        model_name='m-a-p/MERT-v0', 
         kmeans_path=kmeans_path,
-        normalize_input=True,
-        normalize_embeds=True,
+        **asdict(model_config.hubert_kmeans_cfg),
     ).to(device)
 
     print('loading encodec')
-    encodec_wrapper = create_encodec_24khz(bandwidth=6.).to(device)
+    encodec_wrapper = create_encodec_24khz(**asdict(model_config.encodec_cfg)).to(device)
 
     print('creating coarse transformer')
     coarse_transformer = create_coarse_transformer(
-        dim=1024,
-        depth=6,
         clap_codebook_size=clap.codebook_size,
         semantic_codebook_size=wav2vec.codebook_size,
         acoustic_codebook_size=encodec_wrapper.codebook_size,
-        num_coarse_quantizers=3,
+        **asdict(model_config.coarse_cfg),
     ).to(device)
 
     def load_model(model, path):
@@ -126,7 +131,7 @@ if __name__ == '__main__':
         clap_token_ids=clap_token_ids,
         semantic_token_ids=semantic_token_ids,
         coarse_token_ids=None,
-        max_time_steps=int(4 * 75),
+        max_time_steps=int(model_config.global_cfg.coarse_audio_length_seconds * 75),
         reconstruct_wave=True,
         include_eos_in_output=False,
         append_eos_to_conditioning_tokens=True,
