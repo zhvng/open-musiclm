@@ -40,11 +40,17 @@ class HfHubertWithKmeans(nn.Module):
         seq_len_multiple_of=int(16000 / 50),
         normalize_input=True,
         normalize_embeds=True,
+        codebook_size: int=1024
     ):
         super().__init__()
         self.target_sample_hz = target_sample_hz
         self.seq_len_multiple_of = seq_len_multiple_of
         self.codebook_size = kmeans.n_clusters if exists(kmeans) else None
+
+        self.codebook_size = codebook_size
+        if exists(kmeans):
+            assert self.codebook_size == kmeans.n_clusters, "codebook_size must match kmeans.n_clusters"
+
         self.normalize_input = normalize_input
         self.normalize_embeds = normalize_embeds
 

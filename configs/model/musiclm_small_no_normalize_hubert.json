@@ -1,37 +1,54 @@
 {
-    "clap_rvq_cfg": {
-        "checkpoint_path": "./checkpoints/clap-laion-audioset-fusion.pt",
-        "rq_num_quantizers": 12
-    },
-    "hubert_kmeans_cfg": {
-        "model_name": "m-a-p/MERT-v0",
-        "normalize_input": false,
-        "normalize_embeds": false
-    },
-    "encodec_cfg": {
-        "bandwidth": 6.0
-    },
-    "semantic_cfg": {
-        "dim": 1024,
-        "depth": 6,
-        "num_clap_quantizers": 12
-    },
-    "coarse_cfg": {
-        "dim": 1024,
-        "depth": 6,
-        "num_clap_quantizers": 12,
-        "num_coarse_quantizers": 3
-    },
-    "fine_cfg": {
-        "dim": 1024,
-        "depth": 6,
+    "global_cfg": {
+        "semantic_audio_length_seconds": 8.0,
+        "coarse_audio_length_seconds": 4.0,
+        "fine_audio_length_seconds": 2.0,
         "num_clap_quantizers": 12,
         "num_coarse_quantizers": 3,
         "num_fine_quantizers": 5
     },
-    "global_cfg": {
-        "semantic_audio_length_seconds": 8.0,
-        "coarse_audio_length_seconds": 4.0,
-        "fine_audio_length_seconds": 2.0
+    "clap_rvq_cfg": {
+        "checkpoint_path": "./checkpoints/clap-laion-audioset-fusion.pt",
+        "codebook_size": 1024
+    },
+    "hubert_kmeans_cfg": {
+        "model_name": "m-a-p/MERT-v0",
+        "normalize_input": true,
+        "normalize_embeds": false,
+        "embed_layer": 7,
+        "target_sample_hz": 16000,
+        "seq_len_multiple_of": 320,
+        "codebook_size": 1024
+    },
+    "encodec_cfg": {
+        "bandwidth": 6.0,
+        "codebook_size": 1024
+    },
+    "semantic_cfg": {
+        "dim": 1024,
+        "depth": 6,
+        "heads": 8,
+        "attn_dropout": 0.0,
+        "ff_dropout": 0.1,
+        "grad_shrink_alpha": 0.1,
+        "non_causal_prefix_size": 0
+    },
+    "coarse_cfg": {
+        "dim": 1024,
+        "depth": 6,
+        "heads": 8,
+        "attn_dropout": 0.0,
+        "ff_dropout": 0.1,
+        "grad_shrink_alpha": 0.1,
+        "non_causal_prefix_size": 0
+    },
+    "fine_cfg": {
+        "dim": 1024,
+        "depth": 6,
+        "heads": 8,
+        "attn_dropout": 0.0,
+        "ff_dropout": 0.1,
+        "grad_shrink_alpha": 0.1,
+        "non_causal_prefix_size": 0
     }
 }

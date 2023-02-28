@@ -651,6 +651,6 @@ class HfHubertKmeansTrainer(nn.Module):
         features = features[~np.any(np.isnan(features), axis=-1)]
 
         self.print('step 2: training kmeans')
-        learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'))
+        learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'), n_clusters=self.hubert_kmeans.codebook_size)
 
         self.print('training complete')

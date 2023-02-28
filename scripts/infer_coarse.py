@@ -15,24 +15,26 @@ python scripts/infer_coarse.py \
 
 '''
 
+import argparse
 import os
 import sys
 from pathlib import Path
 
 import torch
 import torchaudio
-from torchaudio.functional import resample
 from einops import rearrange
-import argparse
-from dataclasses import asdict
+from torchaudio.functional import resample
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from open_musiclm.clap_quantized import create_clap_quantized
-from open_musiclm.open_musiclm import create_coarse_transformer, get_or_compute_clap_token_ids, get_or_compute_semantic_token_ids, CoarseStage
-from open_musiclm.encodec_wrapper import create_encodec_24khz
-from open_musiclm.hf_hubert_kmeans import get_hubert_kmeans
-from open_musiclm.config import load_model_config 
+from open_musiclm.config import (create_clap_quantized_from_config,
+                                 create_coarse_transformer_from_config,
+                                 create_encodec_from_config,
+                                 create_hubert_kmeans_from_config,
+                                 load_model_config)
+from open_musiclm.open_musiclm import (CoarseStage,
+                                       get_or_compute_clap_token_ids,
+                                       get_or_compute_semantic_token_ids)
 from scripts.train_utils import disable_print
 
 if __name__ == '__main__':
@@ -60,39 +62,16 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     print('loading clap...')
-    with disable_print():
-        clap = create_clap_quantized(
-            device=device, 
-            learn_rvq=False, 
-            rvq_checkpoint_path=args.rvq_path,
-            **asdict(model_config.clap_rvq_cfg),
-        ).to(device)
+    clap = create_clap_quantized_from_config(model_config, args.rvq_path, device)
 
     print('loading wav2vec...')
-    wav2vec = get_hubert_kmeans(
-        kmeans_path=kmeans_path,
-        **asdict(model_config.hubert_kmeans_cfg),
-    ).to(device)
+    wav2vec = create_hubert_kmeans_from_config(model_config, args.kmeans_path, device)
 
-    print('loading encodec')
-    encodec_wrapper = create_encodec_24khz(**asdict(model_config.encodec_cfg)).to(device)
-
-    print('creating coarse transformer')
-    coarse_transformer = create_coarse_transformer(
-        clap_codebook_size=clap.codebook_size,
-        semantic_codebook_size=wav2vec.codebook_size,
-        acoustic_codebook_size=encodec_wrapper.codebook_size,
-        **asdict(model_config.coarse_cfg),
-    ).to(device)
-
-    def load_model(model, path):
-        path = Path(path)
-        assert path.exists(), f'checkpoint does not exist at {str(path)}'
-        pkg = torch.load(str(path))
-        model.load_state_dict(pkg)
+    print('loading encodec...')
+    encodec_wrapper = create_encodec_from_config(model_config, device)
 
     print('loading coarse stage...')
-    load_model(coarse_transformer, coarse_path)
+    coarse_transformer = create_coarse_transformer_from_config(model_config, coarse_path, device)
 
     coarse_stage = CoarseStage(
         coarse_transformer=coarse_transformer,
@@ -101,7 +80,7 @@ if __name__ == '__main__':
         clap=clap
     )
 
-    torch.manual_seed(99)
+    torch.manual_seed(args.seed)
 
     print('loading audio from dataset')
     

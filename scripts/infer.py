@@ -11,22 +11,15 @@ python3 scripts/infer.py \
 
 import os
 import sys
-from pathlib import Path
 
 import torch
 import torchaudio
 from einops import rearrange
 import argparse
-from dataclasses import asdict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from open_musiclm.clap_quantized import create_clap_quantized
-from open_musiclm.open_musiclm import create_coarse_transformer, create_fine_transformer, create_semantic_transformer, MusicLM
-from open_musiclm.encodec_wrapper import create_encodec_24khz
-from open_musiclm.hf_hubert_kmeans import get_hubert_kmeans
-from open_musiclm.config import load_model_config
-from scripts.train_utils import disable_print
+from open_musiclm.config import load_model_config, create_musiclm_from_config
 
 prompts = [
     [
@@ -70,68 +63,14 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    print('loading clap...')
-    with disable_print():
-        clap = create_clap_quantized(
-            device=device, 
-            learn_rvq=False, 
-            rvq_checkpoint_path=rvq_path,
-            **asdict(model_config.clap_rvq_cfg),
-        ).to(device)
-
-    print('loading wav2vec...')
-    wav2vec = get_hubert_kmeans(
+    musiclm = create_musiclm_from_config(
+        model_config=model_config,
+        semantic_path=semantic_path,
+        coarse_path=coarse_path,
+        fine_path=fine_path,
+        rvq_path=rvq_path,
         kmeans_path=kmeans_path,
-        **asdict(model_config.hubert_kmeans_cfg),
-    ).to(device)
-
-    print('loading encodec')
-    encodec_wrapper = create_encodec_24khz(**asdict(model_config.encodec_cfg)).to(device)
-
-    print('creating transformers')
-    semantic_transformer = create_semantic_transformer(
-        clap_codebook_size=clap.codebook_size,
-        semantic_codebook_size=wav2vec.codebook_size,
-        **asdict(model_config.semantic_cfg),
-    ).to(device)
-
-    coarse_transformer = create_coarse_transformer(
-        clap_codebook_size=clap.codebook_size,
-        semantic_codebook_size=wav2vec.codebook_size,
-        acoustic_codebook_size=encodec_wrapper.codebook_size,
-        **asdict(model_config.coarse_cfg),
-    ).to(device)
-
-    fine_transformer = create_fine_transformer(
-        clap_codebook_size=clap.codebook_size,
-        acoustic_codebook_size=encodec_wrapper.codebook_size,
-        **asdict(model_config.fine_cfg),
-    ).to(device)
-
-    def load_model(model, path):
-        path = Path(path)
-        assert path.exists(), f'checkpoint does not exist at {str(path)}'
-        pkg = torch.load(str(path))
-        model.load_state_dict(pkg)
-
-    print('loading semantic stage...')
-    load_model(semantic_transformer, semantic_path)
-
-    print('loading coarse stage...')
-    load_model(coarse_transformer, coarse_path)
-
-    print('loading fine stage...')
-    load_model(fine_transformer, fine_path)
-
-    print('loading musiclm')
-    musiclm = MusicLM(
-        wav2vec=wav2vec,
-        clap=clap,
-        neural_codec=encodec_wrapper,
-        semantic_transformer=semantic_transformer,
-        coarse_transformer=coarse_transformer,
-        fine_transformer=fine_transformer,
-    )
+        device=device)
 
     torch.manual_seed(seed)
 
@@ -151,5 +90,5 @@ if __name__ == '__main__':
 
         generated_wave = rearrange(generated_wave, 'b n -> b 1 n')
         for i, wave in enumerate(generated_wave):
-            torchaudio.save(f'results/{prompt[i][:25]}_generated.wav', wave, encodec_wrapper.sample_rate)
+            torchaudio.save(f'results/{prompt[i][:25]}_generated.wav', wave, musiclm.neural_codec.sample_rate)
 

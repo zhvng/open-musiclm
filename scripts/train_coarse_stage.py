@@ -1,20 +1,18 @@
+import argparse
 import os
 import sys
+from pathlib import Path
 
 import torch
-from audiolm_pytorch import FairseqVQWav2Vec, HubertWithKmeans
-import argparse
-from pathlib import Path
-from dataclasses import asdict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from open_musiclm.clap_quantized import create_clap_quantized
-from open_musiclm.open_musiclm import create_coarse_transformer 
-from open_musiclm.encodec_wrapper import create_encodec_24khz
-from open_musiclm.trainer import SingleStageTrainer
-from open_musiclm.hf_hubert_kmeans import get_hubert_kmeans
-from open_musiclm.config import load_model_config, load_training_config
+from open_musiclm.config import (create_clap_quantized_from_config,
+                                 create_coarse_transformer_from_config,
+                                 create_encodec_from_config,
+                                 create_hubert_kmeans_from_config,
+                                 create_single_stage_trainer_from_config,
+                                 load_model_config, load_training_config)
 from scripts.train_utils import disable_print, get_latest_checkpoints
 
 if __name__ == '__main__':
@@ -39,47 +37,31 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     print('loading clap...')
-    with disable_print():
-        clap = create_clap_quantized(
-            device=device, 
-            learn_rvq=False, 
-            rvq_checkpoint_path=args.rvq_path,
-            **asdict(model_config.clap_rvq_cfg),
-        ).to(device)
+    clap = create_clap_quantized_from_config(model_config, args.rvq_path, device)
 
     print('loading wav2vec...')
-    wav2vec = get_hubert_kmeans(
-        kmeans_path=args.kmeans_path,
-        **asdict(model_config.hubert_kmeans_cfg),
-    ).to(device)
+    wav2vec = create_hubert_kmeans_from_config(model_config, args.kmeans_path, device)
 
     print('loading encodec...')
-    encodec_wrapper = create_encodec_24khz(**asdict(model_config.encodec_cfg)).to(device)
-
-    # 8 tokens per timestep @ 75 Hz
-    # lets do 3 coarse 5 fine
+    encodec_wrapper = create_encodec_from_config(model_config, device)
 
     print('loading coarse stage...')
-    coarse_transformer = create_coarse_transformer(
-        clap_codebook_size=clap.codebook_size,
-        semantic_codebook_size=wav2vec.codebook_size,
-        acoustic_codebook_size=encodec_wrapper.codebook_size,
-        **asdict(model_config.coarse_cfg)
-    ).to(device)
+    coarse_transformer = create_coarse_transformer_from_config(model_config, None, device)
 
-    trainer = SingleStageTrainer(
+    trainer = create_single_stage_trainer_from_config(
+        model_config=model_config, 
+        training_config=training_config,
+        stage='coarse',
+        results_folder=args.results_folder, 
         transformer=coarse_transformer,
-        audio_conditioner=clap,
+        clap=clap,
         wav2vec=wav2vec,
-        neural_codec=encodec_wrapper,
-        results_folder=args.results_folder,
-        data_max_length_seconds=model_config.global_cfg.coarse_audio_length_seconds,
+        encodec_wrapper=encodec_wrapper,
+        device=device,
         accelerate_kwargs={
             'log_with': "tensorboard",
             'logging_dir': './logs/coarse'
-        },
-        **asdict(training_config.coarse_trainer_cfg)
-    ).to(device)
+        })
 
     if args.continue_from_dir is not None:
         transformer_checkpoint, optimizer_checkpoint = get_latest_checkpoints(args.continue_from_dir)

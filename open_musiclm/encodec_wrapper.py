@@ -52,14 +52,17 @@ class EncodecWrapper(nn.Module):
             wave = self.encodec.decode(frames)
         return wave
 
-def create_encodec_24khz(bandwidth: float = 6.0):
+def create_encodec_24khz(bandwidth: float = 6.0, codebook_size: int = 1024):
     """
     Create a pretrained EnCodec model.
     Args:
         bandwidth: float, target bandwidth in kHz"""
-    assert bandwidth in [1.5, 3., 6., 12., 24.]
+    assert bandwidth in [1.5, 3., 6., 12., 24.], "invalid bandwidth. must be one of [1.5, 3., 6., 12., 24.]"
 
     encodec = EncodecModel.encodec_model_24khz()
     encodec.set_target_bandwidth(bandwidth)
     encodec_wrapper = EncodecWrapper(encodec=encodec)
+
+    assert encodec_wrapper.codebook_size == codebook_size, "encodec codebook size must be 1024 for now"
+
     return encodec_wrapper

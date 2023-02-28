@@ -1,20 +1,19 @@
+import argparse
 import os
 import sys
+from pathlib import Path
 
 import torch
-import argparse
-from pathlib import Path
-from dataclasses import asdict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from open_musiclm.clap_quantized import create_clap_quantized
-from open_musiclm.open_musiclm import create_semantic_transformer
-from open_musiclm.config import load_model_config, load_training_config
-from open_musiclm.trainer import SingleStageTrainer
-from open_musiclm.hf_hubert_kmeans import get_hubert_kmeans
+from open_musiclm.config import (create_clap_quantized_from_config,
+                                 create_encodec_from_config,
+                                 create_hubert_kmeans_from_config,
+                                 create_semantic_transformer_from_config,
+                                 create_single_stage_trainer_from_config,
+                                 load_model_config, load_training_config)
 from scripts.train_utils import disable_print, get_latest_checkpoints
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train semantic stage')
@@ -38,39 +37,28 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     print('loading clap...')
-    with disable_print():
-        clap = create_clap_quantized(
-            **asdict(model_config.clap_rvq_cfg),
-            device=device, 
-            learn_rvq=False, 
-            rvq_checkpoint_path=args.rvq_path,
-        ).to(device)
+    clap = create_clap_quantized_from_config(model_config, args.rvq_path, device)
 
     print('loading wav2vec...')
-    wav2vec = get_hubert_kmeans(
-        **asdict(model_config.hubert_kmeans_cfg),
-        kmeans_path=args.kmeans_path,
-    ).to(device)
+    wav2vec = create_hubert_kmeans_from_config(model_config, args.kmeans_path, device)
 
     print('loading semantic stage...')
-    semantic_transformer = create_semantic_transformer(
-        **asdict(model_config.semantic_cfg),
-        clap_codebook_size=clap.codebook_size,
-        semantic_codebook_size=wav2vec.codebook_size,
-    ).to(device)
+    semantic_transformer = create_semantic_transformer_from_config(model_config, None, device)
 
-    trainer = SingleStageTrainer(
+    trainer = create_single_stage_trainer_from_config(
+        model_config=model_config, 
+        training_config=training_config,
+        stage='semantic',
+        results_folder=args.results_folder, 
         transformer=semantic_transformer,
-        audio_conditioner=clap,
+        clap=clap,
         wav2vec=wav2vec,
-        **asdict(training_config.semantic_trainer_cfg),
-        data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
-        results_folder=args.results_folder,
+        encodec_wrapper=None,
+        device=device,
         accelerate_kwargs={
             'log_with': "tensorboard",
             'logging_dir': './logs/semantic'
-        }
-    ).to(device)
+        })
 
     if args.continue_from_dir is not None:
         transformer_checkpoint, optimizer_checkpoint = get_latest_checkpoints(args.continue_from_dir)

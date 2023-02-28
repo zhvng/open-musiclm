@@ -1,15 +1,16 @@
+import argparse
 import os
 import sys
 
 import torch
-from dataclasses import asdict
-import argparse
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from open_musiclm.clap_quantized import create_clap_quantized
+from open_musiclm.config import (create_clap_quantized_from_config,
+                                 create_clap_rvq_trainer_from_config,
+                                 load_model_config, load_training_config)
 from open_musiclm.trainer import ClapRVQTrainer
-from open_musiclm.config import load_model_config, load_training_config
 from scripts.train_utils import disable_print
 
 if __name__ == '__main__':
@@ -25,18 +26,13 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    with disable_print():
-        clap = create_clap_quantized(
-            device=device, 
-            learn_rvq=True,
-            rvq_checkpoint_path=None,
-            **asdict(model_config.clap_rvq_cfg),
-        ).to(device)
+    print('loading clap...')
+    clap = create_clap_quantized_from_config(model_config, None, device)
 
-    trainer = ClapRVQTrainer(
-        audio_conditioner=clap,
+    trainer = create_clap_rvq_trainer_from_config(
+        training_config=training_config,
+        clap=clap,
         results_folder=args.results_folder,
-        **asdict(training_config.clap_rvq_trainer_cfg),
-    ).to(device)
+        device=device)
 
     trainer.train()
