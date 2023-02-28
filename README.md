@@ -33,7 +33,7 @@ conda activate open-musiclm
 ```
 
 ## Training
-In order to get a working model, there are 5 parts we need to train: clap rvq, hubert kmeans, semantic stage, coarse stage & fine stage.
+There are 5 parts we need to train: clap rvq, hubert kmeans, semantic stage, coarse stage & fine stage.
 
 All parts of the model are defined in a model config (in the `./configs/model/` directory). This config contains information such as number of layers, number of quantizers, target audio lengths for each stage, etc.
 
