@@ -32,24 +32,25 @@ conda env create -f environment.yaml
 conda activate open-musiclm
 ```
 
+## Configs
+A "model config" contains information about the model architecture such as the number of layers, number of quantizers, target audio lengths for each stage, etc. It is used to instantiate the model during training and inference.
+
+A "training config" contains hyperparameters for training the model. It is used to instantiate the trainer classes during training.
+
+See the `./configs` directory for example configs.
+
 ## Training
-There are 5 parts we need to train: clap rvq, hubert kmeans, semantic stage, coarse stage & fine stage.
-
-All parts of the model are defined in a model config (in the `./configs/model/` directory). This config contains information such as number of layers, number of quantizers, target audio lengths for each stage, etc.
-
-When training the model, we also use a training config (in the `./configs/training/` directory), which contains the hyperparameters for our run.
-
 ### CLAP RVQ
-The first step is to train the residual vector quantizer that maps continuous CLAP embeds -> a discrete token sequence.
+The first step is to train the residual vector quantizer that maps continuous CLAP embeds to a discrete token sequence.
 ```shell
 python ./scripts/train_clap_rvq.py \
     --results_folder ./results/clap_rvq \ # where to save results and checkpoints
-    --model_config ./configs/model/musiclm_small.json \
-    --training_config ./configs/training/train_musiclm_fma.json
+    --model_config ./configs/model/musiclm_small.json \ # path to model config
+    --training_config ./configs/training/train_musiclm_fma.json # path to training config
 ```
 
-### Hubert Kmeans
-Next we learn the kmeans layer that we use to quantize our MERT embeddings into semantic tokens.
+### Hubert K-means
+Next, we learn a K-means layer that we use to quantize our MERT embeddings into semantic tokens.
 ```shell
 python ./scripts/train_hubert_kmeans.py \
     --results_folder ./results/hubert_kmeans \ # where to save results and checkpoints
@@ -58,7 +59,7 @@ python ./scripts/train_hubert_kmeans.py \
 ```
 
 ### Semantic Stage + Coarse Stage + Fine Stage
-Once we have a working kmeans and RVQ, we can now train the semantic, coarse and fine stages. These stages can be trained concurrently.
+Once we have a working K-means and RVQ, we can now train the semantic, coarse and fine stages. These stages can be trained concurrently.
 ```shell
 python ./scripts/train_semantic_stage.py \
     --results_folder ./results/semantic \ # where to save results and checkpoints
@@ -87,12 +88,15 @@ python ./scripts/train_fine_stage.py \
 ## Inference
 ```shell
 python scripts/infer.py \
-    --semantic_path ./results/semantic/semantic.transformer.10000.pt \
-    --coarse_path ./results/coarse/coarse.transformer.10000.pt \
-    --fine_path ./results/fine/fine.transformer.10000.pt \
+    --semantic_path PATH_TO_SEMANTIC_CHECKPOINT \   # path to previously trained semantic stage
+    --coarse_path PATH_TO_COARSE_CHECKPOINT \       # path to previously trained coarse stage
+    --fine_path PATH_TO_FINE_CHECKPOINT \           # path to previously trained fine stage
+    --rvq_path PATH_TO_RVQ_CHECKPOINT \             # path to previously trained rvq
+    --kmeans_path PATH_TO_KMEANS_CHECKPOINT         # path to previously trained kmeans
     --model_config ./configs/model/musiclm_small.json \
-    --return_coarse_wave
+    --duration 4
 ```
+You can use the `--return_coarse_wave` flag to skip the fine stage and reconstruct audio from coarse tokens alone.
 
 # Thank you
 * [@lucidrains](https://github.com/lucidrains/) for the [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
