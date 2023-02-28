@@ -84,6 +84,16 @@ python ./scripts/train_fine_stage.py \
     --kmeans_path PATH_TO_KMEANS_CHECKPOINT # path to previously trained kmeans
 ```
 
+## Inference
+```shell
+python scripts/infer.py \
+    --semantic_path ./results/semantic/semantic.transformer.10000.pt \
+    --coarse_path ./results/coarse/coarse.transformer.10000.pt \
+    --fine_path ./results/fine/fine.transformer.10000.pt \
+    --model_config ./configs/model/musiclm_small.json \
+    --return_coarse_wave
+```
+
 # Thank you
 * [@lucidrains](https://github.com/lucidrains/) for the [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
 * [LAION](https://laion.ai/) for [CLAP](https://github.com/LAION-AI/CLAP)
