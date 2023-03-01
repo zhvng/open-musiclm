@@ -61,9 +61,9 @@ if __name__ == '__main__':
         })
 
     if args.continue_from_dir is not None:
-        transformer_checkpoint, optimizer_checkpoint = get_latest_checkpoints(args.continue_from_dir)
-        print(f'loading checkpoint {transformer_checkpoint} and {optimizer_checkpoint}')
-        trainer.load(transformer_checkpoint, optimizer_checkpoint)
+        checkpoints = get_latest_checkpoints(args.continue_from_dir)
+        print(f'loading checkpoints: {checkpoints}')
+        trainer.load(*checkpoints)
 
     print('training!')
     trainer.train()

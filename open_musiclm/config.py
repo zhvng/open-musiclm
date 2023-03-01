@@ -111,6 +111,7 @@ class SingleStageTrainerConfig:
     folder: str
     valid_frac: float
     lr: float
+    lr_warmup: int
     batch_size: int
     grad_accum_every: int
     wd: float

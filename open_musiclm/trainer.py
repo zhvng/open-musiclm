@@ -7,7 +7,6 @@ import torch.nn.functional as F
 import numpy as np
 import tqdm
 from accelerate import Accelerator, DistributedType
-from audiolm_pytorch.optimizer import get_optimizer
 from beartype import beartype
 from beartype.door import is_bearable
 from beartype.typing import Dict, List, Literal, Optional, Union
@@ -26,6 +25,7 @@ from .data import SoundDataset, get_dataloader
 from .model_types import NeuralCodec, Wav2Vec
 from .open_musiclm import (CoarseStage, FineStage, SemanticStage,
                            TokenConditionedTransformer)
+from .optimizer import get_optimizer, get_linear_scheduler
 from .utils import (all_rows_have_eos_id, append_eos_id,
                     batch_unique_consecutive, ceil_div, default,
                     eval_decorator, exists, generate_mask_with_prob,
@@ -114,6 +114,7 @@ class SingleStageTrainer(nn.Module):
         ignore_load_errors=True,
         folder=None,
         lr=3e-4,
+        lr_warmup=0,
         grad_accum_every=1,
         wd=0.,
         max_grad_norm=0.5,
@@ -183,6 +184,14 @@ class SingleStageTrainer(nn.Module):
         # optimizers
 
         self.optim = get_optimizer(transformer.parameters(), lr=lr, wd=wd)
+
+        if lr_warmup > 0:
+            self.scheduler = get_linear_scheduler(
+                self.optim,
+                total_iters=lr_warmup,
+            )
+        else:
+            self.scheduler = None
 
         # max grad norm
 
@@ -265,14 +274,19 @@ class SingleStageTrainer(nn.Module):
         hps['data_max_length_seconds'] = data_max_length_seconds
         self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
 
-    def save(self, model_path, optim_path):
+    def save(self, model_path, optim_path, scheduler_path=None):
         model_state_dict = self.accelerator.get_state_dict(self.transformer)
         torch.save(model_state_dict, model_path)
 
         optim_state_dict = self.optim.state_dict()
         torch.save(optim_state_dict, optim_path)
+
+        if exists(self.scheduler):
+            assert exists(scheduler_path)
+            scheduler_state_dict = self.scheduler.state_dict()
+            torch.save(scheduler_state_dict, scheduler_path)
       
-    def load(self, model_path, optim_path):
+    def load(self, model_path, optim_path, scheduler_path=None):
         model_path = Path(model_path)
         optim_path = Path(optim_path)
         assert model_path.exists() and optim_path.exists()
@@ -282,6 +296,13 @@ class SingleStageTrainer(nn.Module):
         transformer = self.accelerator.unwrap_model(self.transformer)
         transformer.load_state_dict(model_state_dict)
         self.optim.load_state_dict(optim_state_dict)
+
+        if exists(self.scheduler):
+            assert exists(scheduler_path), 'the config specifies lr warmup is used, but no scheduler checkpoint is given. try setting lr_warmup to 0.'
+            scheduler_path = Path(scheduler_path)
+            assert scheduler_path.exists()
+            scheduler_state_dict = torch.load(scheduler_path, map_location=self.device)
+            self.scheduler.load_state_dict(scheduler_state_dict)
 
     def print(self, msg):
         self.accelerator.print(msg)
@@ -338,6 +359,8 @@ class SingleStageTrainer(nn.Module):
 
         self.optim.step()
         self.optim.zero_grad()
+        if exists(self.scheduler):
+            self.scheduler.step()
 
         # log
 
@@ -407,8 +430,9 @@ class SingleStageTrainer(nn.Module):
 
             model_path = str(self.results_folder / f'{self.stage}.transformer.{steps}.pt')
             optim_path = str(self.results_folder / f'{self.stage}.optimizer.{steps}.pt')
+            scheduler_path = str(self.results_folder / f'{self.stage}.scheduler.{steps}.pt')
 
-            self.save(model_path, optim_path)
+            self.save(model_path, optim_path, scheduler_path)
 
             # save audio conditioner (clap) rvq checkpoint
             if self.audio_conditioner.learn_rvq:
