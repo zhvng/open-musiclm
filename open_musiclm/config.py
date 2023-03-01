@@ -21,6 +21,7 @@ from .utils import exists
 @dataclass
 class ClapRVQConfig:
     checkpoint_path: str
+    rq_num_quantizers: int
     codebook_size: int
 
 @dataclass
@@ -73,7 +74,6 @@ class GlobalConfig:
     semantic_audio_length_seconds: float = 8.0
     coarse_audio_length_seconds: float = 4.0
     fine_audio_length_seconds: float = 2.0
-    num_clap_quantizers: int = 12
     num_coarse_quantizers: int = 3
     num_fine_quantizers: int = 5
 
@@ -188,7 +188,6 @@ def create_clap_quantized_from_config(model_config: MusicLMModelConfig, rvq_path
             device=device,
             learn_rvq=False,
             rvq_checkpoint_path=rvq_path,
-            rq_num_quantizers=model_config.global_cfg.num_clap_quantizers,
         ).to(device)
 
 @beartype
@@ -212,7 +211,7 @@ def create_semantic_transformer_from_config(
         **asdict(model_config.semantic_cfg),
         clap_codebook_size=model_config.clap_rvq_cfg.codebook_size,
         semantic_codebook_size=model_config.hubert_kmeans_cfg.codebook_size,
-        num_clap_quantizers=model_config.global_cfg.num_clap_quantizers,
+        num_clap_quantizers=model_config.clap_rvq_cfg.rq_num_quantizers,
     ).to(device)
 
     if exists(checkpoint_path):
@@ -231,7 +230,7 @@ def create_coarse_transformer_from_config(
         clap_codebook_size=model_config.clap_rvq_cfg.codebook_size,
         semantic_codebook_size=model_config.hubert_kmeans_cfg.codebook_size,
         acoustic_codebook_size=model_config.encodec_cfg.codebook_size,
-        num_clap_quantizers=model_config.global_cfg.num_clap_quantizers,
+        num_clap_quantizers=model_config.clap_rvq_cfg.rq_num_quantizers,
         num_coarse_quantizers=model_config.global_cfg.num_coarse_quantizers
     ).to(device)
 
@@ -250,7 +249,7 @@ def create_fine_transformer_from_config(
         **asdict(model_config.fine_cfg),
         clap_codebook_size=model_config.clap_rvq_cfg.codebook_size,
         acoustic_codebook_size=model_config.encodec_cfg.codebook_size,
-        num_clap_quantizers=model_config.global_cfg.num_clap_quantizers,
+        num_clap_quantizers=model_config.clap_rvq_cfg.rq_num_quantizers,
         num_coarse_quantizers=model_config.global_cfg.num_coarse_quantizers,
         num_fine_quantizers=model_config.global_cfg.num_fine_quantizers,
     ).to(device)
