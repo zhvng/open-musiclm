@@ -88,6 +88,22 @@ python ./scripts/train_fine_stage.py \
 ```
 
 ## Inference
+Generate multiple samples and use CLAP to select the best ones:
+```shell
+python scripts/infer_top_match.py \
+    "your text prompt"
+    --num_samples 4                                 # number of samples to generate
+    --num_top_matches 1                             # number of top matches to return
+    --semantic_path PATH_TO_SEMANTIC_CHECKPOINT \   # path to previously trained semantic stage
+    --coarse_path PATH_TO_COARSE_CHECKPOINT \       # path to previously trained coarse stage
+    --fine_path PATH_TO_FINE_CHECKPOINT \           # path to previously trained fine stage
+    --rvq_path PATH_TO_RVQ_CHECKPOINT \             # path to previously trained rvq
+    --kmeans_path PATH_TO_KMEANS_CHECKPOINT         # path to previously trained kmeans
+    --model_config ./configs/model/musiclm_small.json \
+    --duration 4
+```
+
+Generate samples for various test prompts:
 ```shell
 python scripts/infer.py \
     --semantic_path PATH_TO_SEMANTIC_CHECKPOINT \   # path to previously trained semantic stage
@@ -98,6 +114,7 @@ python scripts/infer.py \
     --model_config ./configs/model/musiclm_small.json \
     --duration 4
 ```
+
 You can use the `--return_coarse_wave` flag to skip the fine stage and reconstruct audio from coarse tokens alone.
 
 # Thank you
