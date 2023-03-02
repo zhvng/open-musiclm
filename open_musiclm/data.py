@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 from torchaudio.functional import resample
 
-from .utils import curtail_to_multiple
+from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16
 
 # helper functions
 
@@ -21,15 +21,6 @@ def exists(val):
 
 def cast_tuple(val, length = 1):
     return val if isinstance(val, tuple) else ((val,) * length)
-
-# for quantizing resampled audio
-
-def int16_to_float32(x):
-    return (x / 32767.0).type(torch.float32)
-
-def float32_to_int16(x):
-    x = torch.clamp(x, min=-1., max=1.)
-    return (x * 32767.).type(torch.int16)
 
 # type
 

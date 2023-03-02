@@ -35,6 +35,7 @@ from open_musiclm.config import (create_clap_quantized_from_config,
 from open_musiclm.open_musiclm import (CoarseStage,
                                        get_or_compute_clap_token_ids,
                                        get_or_compute_semantic_token_ids)
+from open_musiclm.utils import int16_to_float32, float32_to_int16
 from scripts.train_utils import disable_print
 
 if __name__ == '__main__':
@@ -96,6 +97,9 @@ if __name__ == '__main__':
         data = data[:, :target_length]
         audio_for_clap = resample(data, sample_hz, clap.sample_rate)
         audio_for_wav2vec = resample(data, sample_hz, wav2vec.target_sample_hz)
+
+        audio_for_clap = int16_to_float32(float32_to_int16(audio_for_clap))
+        audio_for_wav2vec = int16_to_float32(float32_to_int16(audio_for_wav2vec))
 
         audios_for_clap.append(audio_for_clap)
         audios_for_wav2vec.append(audio_for_wav2vec)

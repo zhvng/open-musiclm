@@ -84,7 +84,7 @@ if __name__ == '__main__':
             coarse_window_seconds=model_config.global_cfg.coarse_audio_length_seconds, 
             fine_window_seconds=model_config.global_cfg.fine_audio_length_seconds, 
             return_coarse_generated_wave=return_coarse_wave,
-        )
+        ).detach().cpu()
 
         print(generated_wave.shape)
 

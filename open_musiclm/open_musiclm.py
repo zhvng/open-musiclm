@@ -3,19 +3,21 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
 from beartype import beartype
 from beartype.typing import List, Optional
-from einops import rearrange, reduce, repeat
+from einops import einsum, rearrange, reduce, repeat
 from torch import einsum, nn
+from torchaudio.functional import resample
+from tqdm import tqdm
 
 from .clap_quantized import ClapQuantized
 from .model_types import NeuralCodec, Wav2Vec
 from .transformer import Transformer
 from .utils import (all_rows_have_eos_id, append_eos_id,
                     batch_unique_consecutive, ceil_div, default,
-                    eval_decorator, exists, generate_mask_with_prob,
-                    get_embeds, gumbel_sample, mask_out_after_eos_id,
+                    eval_decorator, exists, float32_to_int16,
+                    generate_mask_with_prob, get_embeds, gumbel_sample,
+                    int16_to_float32, mask_out_after_eos_id,
                     round_down_nearest_multiple, top_k)
 
 
@@ -909,7 +911,7 @@ class MusicLM(nn.Module):
         if return_coarse_generated_wave:
             wave = self.neural_codec.decode_from_codebook_indices(all_coarse_token_ids)
             wave = rearrange(wave, 'b 1 n -> b n')
-            return wave.detach().cpu()
+            return wave
 
         # crop to fine window length and iterate 
         all_coarse_token_ids = torch.split(all_coarse_token_ids, fine_window_seconds * acoustic_steps_per_second, dim=1)
@@ -927,4 +929,40 @@ class MusicLM(nn.Module):
             )
             generated_waves.append(generated_wave)
 
-        return torch.cat(generated_waves, dim=-1).detach().cpu()
+        return torch.cat(generated_waves, dim=-1)
+
+    @eval_decorator
+    @torch.no_grad()
+    def generate_top_match(
+        self,
+        *,
+        text: List[str],
+        num_samples=4,
+        num_top_matches: int=1,
+        **kwargs
+    ):
+        """
+        Generates samples, then uses CLAP to identify the best matches to the text.
+
+        Returns a list of generated waves and a list of their topk cosine similarity scores.
+        """
+        all_samples = []
+        all_similarities = []
+        for prompt in text:
+            text_input = [prompt for _ in range(num_samples)]
+            samples = self.forward(text=text_input, **kwargs)
+
+            text_latents = self.clap(text_input=[prompt], return_embedding=True)
+            text_latents = repeat(text_latents, 'b d -> (repeat b) d', repeat=num_samples)
+
+            clap_input = resample(samples, self.neural_codec.sample_rate, self.clap.sample_rate)
+            clap_input = int16_to_float32(float32_to_int16(clap_input))
+            audio_latents = self.clap(audio_input=clap_input, return_embedding=True)
+
+            sim = F.cosine_similarity(text_latents, audio_latents, dim=-1)
+            top_matches = sim.topk(num_top_matches, dim=0, sorted=True).indices
+
+            all_similarities.append(sim[top_matches].detach().cpu())
+            all_samples.append(samples[top_matches])
+
+        return all_samples, all_similarities
