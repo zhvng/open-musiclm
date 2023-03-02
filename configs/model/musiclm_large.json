@@ -1,8 +1,8 @@
 {
     "global_cfg": {
-        "semantic_audio_length_seconds": 8.0,
-        "coarse_audio_length_seconds": 4.0,
-        "fine_audio_length_seconds": 2.0,
+        "semantic_audio_length_seconds": 30.0,
+        "coarse_audio_length_seconds": 10.0,
+        "fine_audio_length_seconds": 3.0,
         "num_coarse_quantizers": 3,
         "num_fine_quantizers": 5
     },
