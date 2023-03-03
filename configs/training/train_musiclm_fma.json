@@ -9,7 +9,7 @@
     },
     "hubert_kmeans_trainer_cfg": {
         "folder": "./data/fma_large",
-        "feature_extraction_num_steps": 160,
+        "feature_extraction_num_steps": 320,
         "feature_extraction_batch_size": 32,
         "data_max_length_seconds": 8.0
     },
@@ -18,7 +18,7 @@
         "folder": "./data/fma_large",
         "valid_frac": 0.05,
         "lr": 0.0003,
-        "lr_warmup": 0,
+        "lr_warmup": 3000,
         "batch_size": 4,
         "grad_accum_every": 8,
         "wd": 0.01,
@@ -35,7 +35,7 @@
         "folder": "./data/fma_large",
         "valid_frac": 0.05,
         "lr": 0.0003,
-        "lr_warmup": 0,
+        "lr_warmup": 6000,
         "batch_size": 2,
         "grad_accum_every": 8,
         "wd": 0.01,
