@@ -13,7 +13,6 @@
     },
     "hubert_kmeans_cfg": {
         "model_name": "m-a-p/MERT-v0",
-        "normalize_input": true,
         "normalize_embeds": true,
         "embed_layer": 7,
         "target_sample_hz": 16000,

@@ -7,7 +7,7 @@ from einops import rearrange, pack, unpack
 from beartype.typing import Optional
 
 from torchaudio.functional import resample
-from .utils import exists, curtail_to_multiple
+from .utils import exists, curtail_to_multiple, zero_mean_unit_var_norm
 from transformers import HubertModel
 from sklearn.cluster import MiniBatchKMeans
 
@@ -15,14 +15,6 @@ import joblib
 import logging
 logging.root.setLevel(logging.ERROR)
 
-
-def normalize_unit_variance(x):
-    mean = torch.mean(x, dim=-1, keepdim=True)
-    x = x - mean
-    std = torch.std(x, dim=-1, keepdim=True)
-    non_zero_std = std.squeeze(-1) > 0.
-    x[non_zero_std] = x[non_zero_std] / std[non_zero_std]
-    return x
 
 class HfHubertWithKmeans(nn.Module):
     """
@@ -38,7 +30,6 @@ class HfHubertWithKmeans(nn.Module):
         embed_layer: int=7,
         target_sample_hz=16000,
         seq_len_multiple_of=int(16000 / 50),
-        normalize_input=True,
         normalize_embeds=True,
         codebook_size: int=1024
     ):
@@ -51,7 +42,6 @@ class HfHubertWithKmeans(nn.Module):
         if exists(kmeans):
             assert self.codebook_size == kmeans.n_clusters, "codebook_size must match kmeans.n_clusters"
 
-        self.normalize_input = normalize_input
         self.normalize_embeds = normalize_embeds
 
         self.embed_layer = embed_layer
@@ -77,10 +67,6 @@ class HfHubertWithKmeans(nn.Module):
         if exists(self.seq_len_multiple_of):
             wav_input = curtail_to_multiple(wav_input, self.seq_len_multiple_of)
 
-        # normalize wav input
-        if self.normalize_input:
-            wav_input = normalize_unit_variance(wav_input) 
-
         hubert_args = {
             'input_values': wav_input,
             'attention_mask': torch.ones_like(wav_input, device=device), # TODO: handle padding
@@ -90,7 +76,7 @@ class HfHubertWithKmeans(nn.Module):
         embed = outputs.hidden_states[self.embed_layer]
 
         if self.normalize_embeds:
-            embed = normalize_unit_variance(embed)
+            embed = zero_mean_unit_var_norm(embed)
 
         if return_embed:
             return embed

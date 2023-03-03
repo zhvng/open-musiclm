@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 from torchaudio.functional import resample
 
-from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16
+from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16, zero_mean_unit_var_norm
 
 # helper functions
 
@@ -25,7 +25,7 @@ def cast_tuple(val, length = 1):
 # type
 
 OptionalIntOrTupleInt = Optional[Union[int, Tuple[Optional[int], ...]]]
-
+FloatOrInt = Union[float, int]
 # dataset functions
 
 @beartype
@@ -34,7 +34,8 @@ class SoundDataset(Dataset):
         self,
         folder,
         exts = ['flac', 'wav', 'mp3'],
-        max_length_seconds: Union[float, int]=1,
+        max_length_seconds: Union[FloatOrInt, Tuple[FloatOrInt, ...]] = 1,
+        normalize: Union[bool, Tuple[bool, ...]] = False,
         target_sample_hz: OptionalIntOrTupleInt = None,
         seq_len_multiple_of: OptionalIntOrTupleInt = None,
         ignore_files: Optional[List[str]] = None,
@@ -60,12 +61,15 @@ class SoundDataset(Dataset):
         self.target_sample_hz = cast_tuple(target_sample_hz)
         num_outputs = len(self.target_sample_hz)
 
-        self.max_length_seconds = max_length_seconds
-        self.max_length = tuple([int(max_length_seconds * hz) for hz in self.target_sample_hz])
+        self.max_length_seconds = cast_tuple(max_length_seconds, num_outputs)
+        self.max_length = tuple([int(s * hz) for s, hz in zip(self.max_length_seconds, self.target_sample_hz)])
+
+        self.normalize = cast_tuple(normalize, num_outputs)
 
         self.seq_len_multiple_of = cast_tuple(seq_len_multiple_of, num_outputs)
 
-        assert len(self.max_length) == len(self.target_sample_hz) == len(self.seq_len_multiple_of)
+        assert len(self.max_length) == len(self.max_length_seconds) == len(
+            self.target_sample_hz) == len(self.seq_len_multiple_of) == len(self.normalize)
 
     def __len__(self):
         return len(self.files)
@@ -84,25 +88,37 @@ class SoundDataset(Dataset):
             # the audio has more than 1 channel, convert to mono
             data = torch.mean(data, dim=0).unsqueeze(0)
 
-        # crop or pad to max_length_seconds
+        # recursively crop the audio at random in the order of longest to shortest max_length_seconds, padding when necessary.
+        # e.g. if max_length_seconds = (10, 4), pick a 10 second crop from the original, then pick a 4 second crop from the 10 second crop
+        # also use normalized data for when 
 
-        audio_length = data.size(1)
-        target_length = int(self.max_length_seconds * sample_hz)
-
-        if audio_length > target_length:
-            max_start = audio_length - target_length
-            start = torch.randint(0, max_start, (1, ))
-            data = data[:, start:start + target_length]
-        else:
-            data = F.pad(data, (0, target_length - audio_length), 'constant')
-
-        # resample if target_sample_hz is not None in the tuple
+        temp_data = data
+        temp_data_normalized = zero_mean_unit_var_norm(data)
 
         num_outputs = len(self.target_sample_hz)
-        data = cast_tuple(data, num_outputs)
+        data = [None for _ in range(num_outputs)]
 
+        sorted_max_length_seconds = sorted(enumerate(self.max_length_seconds), key=lambda t: t[1])
+        for unsorted_i, max_length_seconds in sorted_max_length_seconds: 
+            audio_length = temp_data.size(1)
+            target_length = int(max_length_seconds * sample_hz)
+
+            if audio_length > target_length:
+                max_start = audio_length - target_length
+                start = torch.randint(0, max_start, (1, ))
+
+                temp_data = temp_data[:, start:start + target_length]
+                temp_data_normalized = temp_data_normalized[:, start:start + target_length]
+            else:
+                temp_data = F.pad(temp_data, (0, target_length - audio_length), 'constant')
+                temp_data_normalized = F.pad(temp_data_normalized, (0, target_length - audio_length), 'constant')
+
+            data[unsorted_i] = temp_data_normalized if self.normalize[unsorted_i] else temp_data
+
+        # resample if target_sample_hz is not None in the tuple
         data_tuple = tuple((resample(d, sample_hz, target_sample_hz) if exists(target_sample_hz) else d) for d, target_sample_hz in zip(data, self.target_sample_hz))
-        data_tuple = tuple(int16_to_float32(float32_to_int16(data)) for data in data_tuple)
+        # quantize non-normalized audio to a valid waveform
+        data_tuple = tuple(d if self.normalize[i] else int16_to_float32(float32_to_int16(d)) for i, d in enumerate(data_tuple))
 
         output = []
 

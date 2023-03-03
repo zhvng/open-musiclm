@@ -134,7 +134,7 @@ def get_embeds(
 
     return embeds
 
-# for quantizing resampled audio
+# audio processing helpers
 
 def int16_to_float32(x):
     return (x / 32767.0).type(torch.float32)
@@ -142,3 +142,6 @@ def int16_to_float32(x):
 def float32_to_int16(x):
     x = torch.clamp(x, min=-1., max=1.)
     return (x * 32767.).type(torch.int16)
+
+def zero_mean_unit_var_norm(x):
+    return (x - x.mean(dim=-1, keepdim=True)) / torch.sqrt(x.var(dim=-1, keepdim=True) + 1e-7)

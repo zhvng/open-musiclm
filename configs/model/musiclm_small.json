@@ -1,6 +1,6 @@
 {
     "global_cfg": {
-        "semantic_audio_length_seconds": 8.0,
+        "semantic_audio_length_seconds": 10.0,
         "coarse_audio_length_seconds": 4.0,
         "fine_audio_length_seconds": 2.0,
         "num_coarse_quantizers": 3,
@@ -13,7 +13,6 @@
     },
     "hubert_kmeans_cfg": {
         "model_name": "m-a-p/MERT-v0",
-        "normalize_input": true,
         "normalize_embeds": true,
         "embed_layer": 7,
         "target_sample_hz": 16000,

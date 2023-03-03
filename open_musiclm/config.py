@@ -27,7 +27,6 @@ class ClapRVQConfig:
 @dataclass
 class HubertKmeansConfig:
     model_name: str
-    normalize_input: bool
     normalize_embeds: bool
     embed_layer: int = 7
     target_sample_hz: int = 16000
@@ -305,15 +304,20 @@ def create_single_stage_trainer_from_config(
     device='cpu',
     accelerate_kwargs: dict = {}
 ) -> SingleStageTrainer:
+    
+    semantic_audio_length_seconds = model_config.global_cfg.semantic_audio_length_seconds
+    coarse_audio_length_seconds = model_config.global_cfg.coarse_audio_length_seconds
+    fine_audio_length_seconds = model_config.global_cfg.fine_audio_length_seconds
+
     if stage == 'semantic':
         trainer_cfg = training_config.semantic_trainer_cfg
-        data_max_length_seconds = model_config.global_cfg.semantic_audio_length_seconds
+        data_max_length_seconds = (semantic_audio_length_seconds, semantic_audio_length_seconds)
     elif stage == 'coarse':
         trainer_cfg = training_config.coarse_trainer_cfg
-        data_max_length_seconds = model_config.global_cfg.coarse_audio_length_seconds
+        data_max_length_seconds = (semantic_audio_length_seconds, coarse_audio_length_seconds, coarse_audio_length_seconds)
     elif stage == 'fine':
         trainer_cfg = training_config.fine_trainer_cfg
-        data_max_length_seconds = model_config.global_cfg.fine_audio_length_seconds
+        data_max_length_seconds = (semantic_audio_length_seconds, fine_audio_length_seconds)
     
     trainer = SingleStageTrainer(
         transformer=transformer,
