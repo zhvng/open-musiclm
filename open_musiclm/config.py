@@ -67,6 +67,7 @@ class FineConfig:
     ff_dropout: float = 0.1
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
+    relative_position_bias_type: Literal['continuous', 't5'] = 'continuous'
 
 @dataclass
 class GlobalConfig:

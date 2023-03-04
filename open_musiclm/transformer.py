@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange, repeat
 from torch import einsum, nn
+import math
 
 from .utils import default, exists, grad_shrink, l2norm
 
@@ -57,6 +58,56 @@ class RelativePositionBias(nn.Module):
 
         x = x[rel_pos]
         return rearrange(x, 'i j h -> h i j')
+
+class T5RelativePositionBias(nn.Module):
+    def __init__(
+        self,
+        *,
+        heads,
+        num_buckets=32,
+        max_distance=128,
+        causal=True
+    ):
+        super().__init__()
+        self.num_buckets = num_buckets
+        self.max_distance = max_distance
+        self.causal = causal
+
+        self.relative_attention_bias = nn.Embedding(num_buckets, heads)
+
+    @staticmethod
+    def _relative_position_bucket(relative_position, causal = True, num_buckets = 32, max_distance = 128):
+        ret = 0
+        n = -relative_position
+        if not causal:
+            num_buckets //= 2
+            ret += (n < 0).long() * num_buckets
+            n = torch.abs(n)
+        else:
+            n = torch.max(n, torch.zeros_like(n))
+
+        max_exact = num_buckets // 2
+        is_small = n < max_exact
+
+        val_if_large = max_exact + (
+            torch.log(n.float() / max_exact) / math.log(max_distance / max_exact) * (num_buckets - max_exact)
+        ).long()
+        val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
+
+        ret += torch.where(is_small, n, val_if_large)
+        return ret
+
+    def forward(
+        self,
+        n,
+        device=torch.device('cpu')
+    ):
+        pos = torch.arange(n, device=device)
+        rel_pos = (rearrange(pos, 'i -> i 1') - rearrange(pos, 'j -> 1 j'))
+        rel_pos = self._relative_position_bucket(rel_pos, causal=self.causal, num_buckets=self.num_buckets, max_distance=self.max_distance)
+
+        bias = self.relative_attention_bias(rel_pos)
+        return rearrange(bias, 'i j h -> h i j')
 
 # feedforward
 
@@ -248,6 +299,7 @@ class Transformer(nn.Module):
         grad_shrink_alpha=0.1,
         cond_as_self_attn_prefix=False,
         non_causal_prefix_size=0,
+        relative_position_bias_type='continuous',
         **kwargs
     ):
         super().__init__()
@@ -260,7 +312,12 @@ class Transformer(nn.Module):
 
         self.layers = nn.ModuleList([])
 
-        self.rel_pos_bias = RelativePositionBias(dim=dim // 2, heads=heads)
+        if relative_position_bias_type == 'continuous':
+            self.rel_pos_bias = RelativePositionBias(dim=dim // 2, heads=heads)
+        elif relative_position_bias_type == 't5':
+            self.rel_pos_bias = T5RelativePositionBias(heads=heads, num_buckets=32, max_distance=128)
+        else:
+            raise ValueError(f'invalid relative position bias type: {relative_position_bias_type}')
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
@@ -277,7 +334,8 @@ class Transformer(nn.Module):
         x,
         self_attn_mask=None,
         context=None,
-        context_mask=None
+        context_mask=None,
+        attn_bias=None,
     ):
         assert not (self.cond_as_self_attn_prefix and not exists(context))
         assert not (exists(
@@ -288,7 +346,10 @@ class Transformer(nn.Module):
         # from cogview paper, adopted by GLM 130B LLM, decreases likelihood of attention net instability
         x = self.grad_shrink(x)
 
-        rel_pos_bias = self.rel_pos_bias(n, device=device)
+        if exists(attn_bias):
+            rel_pos_bias = attn_bias
+        else:
+            rel_pos_bias = self.rel_pos_bias(n, device = device) if exists(self.rel_pos_bias) else None
 
         self_attn_kwargs = dict()
         if self.cond_as_self_attn_prefix:

@@ -52,7 +52,7 @@
         "folder": "./data/fma_large",
         "valid_frac": 0.05,
         "lr": 0.0003,
-        "lr_warmup": 3000,
+        "lr_warmup": 0,
         "batch_size": 2,
         "grad_accum_every": 8,
         "wd": 0.01,

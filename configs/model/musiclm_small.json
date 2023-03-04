@@ -30,7 +30,8 @@
         "attn_dropout": 0.0,
         "ff_dropout": 0.1,
         "grad_shrink_alpha": 0.1,
-        "non_causal_prefix_size": 0
+        "non_causal_prefix_size": 0,
+        "relative_position_bias_type": "continuous"
     },
     "coarse_cfg": {
         "dim": 1024,
@@ -39,7 +40,8 @@
         "attn_dropout": 0.0,
         "ff_dropout": 0.1,
         "grad_shrink_alpha": 0.1,
-        "non_causal_prefix_size": 0
+        "non_causal_prefix_size": 0,
+        "relative_position_bias_type": "continuous"
     },
     "fine_cfg": {
         "dim": 1024,
@@ -48,6 +50,7 @@
         "attn_dropout": 0.0,
         "ff_dropout": 0.1,
         "grad_shrink_alpha": 0.1,
-        "non_causal_prefix_size": 0
+        "non_causal_prefix_size": 0,
+        "relative_position_bias_type": "continuous"
     }
 }
