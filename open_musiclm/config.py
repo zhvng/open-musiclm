@@ -38,6 +38,8 @@ class EncodecConfig:
     bandwidth: float
     codebook_size: int
 
+RelativePositionBiasType = Literal['continuous', 't5']
+
 @dataclass
 class SemanticConfig:
     dim: int = 1024
@@ -47,6 +49,7 @@ class SemanticConfig:
     ff_dropout: float = 0.1
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
+    relative_position_bias_type: RelativePositionBiasType = 'continuous'
 
 @dataclass
 class CoarseConfig:
@@ -57,6 +60,7 @@ class CoarseConfig:
     ff_dropout: float = 0.1
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
+    relative_position_bias_type: RelativePositionBiasType = 'continuous'
 
 @dataclass
 class FineConfig:
@@ -67,7 +71,7 @@ class FineConfig:
     ff_dropout: float = 0.1
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
-    relative_position_bias_type: Literal['continuous', 't5'] = 'continuous'
+    relative_position_bias_type: RelativePositionBiasType = 'continuous'
 
 @dataclass
 class GlobalConfig:
