@@ -250,6 +250,9 @@ class SingleStageTrainer(nn.Module):
             self.valid_dl
         )
 
+        if exists(self.scheduler):
+            self.scheduler = self.accelerator.prepare(self.scheduler)
+
         # dataloader iterators
 
         self.dl_iter = cycle(self.dl)
