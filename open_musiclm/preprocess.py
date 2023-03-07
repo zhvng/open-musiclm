@@ -220,6 +220,7 @@ class DataPreprocessor(nn.Module):
                 if yes_or_no('are you sure?'):
                     rmtree(str(self.results_folder))
             folder.mkdir(parents=True, exist_ok=True)
+        self.shards = shards
 
     def print(self, msg):
         print(msg)
@@ -241,9 +242,9 @@ class DataPreprocessor(nn.Module):
 
         return clap_token_ids, semantic_token_ids, (coarse_token_ids, fine_token_ids)
 
-    def generate_shard(self, accumulate_batches, ds_fields, dl_iter):
+    def generate_shard(self, accumulate_batches, ds_fields, dl_iter, shard_name):
         shard = None
-        for _ in tqdm(range(accumulate_batches), desc='processing data'):
+        for _ in tqdm(range(accumulate_batches), desc=f'processing data for {shard_name}'):
             data_kwargs = dict(zip(ds_fields, next(dl_iter)))
             non_empty_batch = False
             while non_empty_batch is False:
@@ -267,7 +268,7 @@ class DataPreprocessor(nn.Module):
                     coarse_token_ids = coarse_token_ids.detach().cpu().numpy()
                     shard['coarse_token_ids'] = np.concatenate(without_none([shard.get('coarse_token_ids'), coarse_token_ids]), axis=0)
                 
-                if exists(fine_token_ids):
+                if exists(fine_token_ids) and shard_name != 'coarse':
                     fine_token_ids = fine_token_ids.detach().cpu().numpy()
                     shard['fine_token_ids'] = np.concatenate(without_none([shard.get('fine_token_ids'), fine_token_ids]), axis=0)
 
@@ -283,16 +284,16 @@ class DataPreprocessor(nn.Module):
         logs = {}
 
         # collect and save data
-        for ds_fields, dl_iter, shard_folder in zip(self.ds_fields_all, self.dl_iter, self.shard_folders):
+        for ds_fields, dl_iter, shard_folder, shard_name in zip(self.ds_fields_all, self.dl_iter, self.shard_folders, self.shards):
             self.print(f'processing train shard and saving in {shard_folder}')
-            train_shard = self.generate_shard(self.accumulate_batches, ds_fields, dl_iter)
+            train_shard = self.generate_shard(self.accumulate_batches, ds_fields, dl_iter, shard_name)
             self.print(f"saving train shard containing {self.accumulate_batches * self.batch_size} samples...")
             np.save(shard_folder / f'train_shard_{steps}.npy', train_shard)
 
-        for ds_fields, valid_dl_iter, shard_folder in zip(self.ds_fields_all, self.valid_dl_iter, self.shard_folders):
+        for ds_fields, valid_dl_iter, shard_folder, shard_name in zip(self.ds_fields_all, self.valid_dl_iter, self.shard_folders, self.shards):
             self.print(f'processing valid shard and saving in {shard_folder}')
             num_valid_batches = int(self.valid_frac * self.accumulate_batches)
-            shard = self.generate_shard(num_valid_batches, ds_fields, valid_dl_iter)
+            shard = self.generate_shard(num_valid_batches, ds_fields, valid_dl_iter, shard_name)
             self.print(f"saving valid shard containing {num_valid_batches * self.batch_size} samples...")
             np.save(shard_folder / f'valid_shard_{steps}.npy', shard)
 
