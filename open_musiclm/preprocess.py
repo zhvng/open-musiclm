@@ -101,9 +101,12 @@ class DataPreprocessor(nn.Module):
         folder=None,
         random_split_seed=42,
         results_folder='./data/fma_preprocessed',
+        accelerate_kwargs: dict = {},
         **kwargs,
     ):
         super().__init__()
+
+        self.accelerator = Accelerator(**accelerate_kwargs)
 
         self.wav2vec = wav2vec
         self.audio_conditioner = audio_conditioner
@@ -205,6 +208,21 @@ class DataPreprocessor(nn.Module):
 
         self.valid_dl = [get_dataloader(self.valid_ds, batch_size=batch_size, shuffle=True) for valid_ds in self.valid_ds]
 
+        # prepare
+        (
+            self.dl,
+            self.valid_dl,
+            self.audio_conditioner,
+            self.neural_codec,
+            self.wav2vec,
+        ) = self.accelerator.prepare(
+            self.dl,
+            self.valid_dl,
+            self.audio_conditioner,
+            self.neural_codec,
+            self.wav2vec,
+        )
+
         # dataloader iterators
 
         self.dl_iter = [cycle(dl) for dl in self.dl]
@@ -215,15 +233,30 @@ class DataPreprocessor(nn.Module):
         self.results_folder.mkdir(parents=True, exist_ok=True)
 
         self.shard_folders = [self.results_folder / s for s in shards]
-        for folder in self.shard_folders:
-            if len([*folder.glob('**/*')]) > 0 and yes_or_no(f'existing directory found {folder}. do you want to clear it?'):
-                if yes_or_no('are you sure?'):
-                    rmtree(str(self.results_folder))
-            folder.mkdir(parents=True, exist_ok=True)
+        if self.is_main:
+            for folder in self.shard_folders:
+                if len([*folder.glob('**/*')]) > 0 and yes_or_no(f'existing directory found {folder}. do you want to clear it?'):
+                    rmtree(str(folder))
+                folder.mkdir(parents=True, exist_ok=True)
+
+        self.accelerator.wait_for_everyone()
+
         self.shards = shards
 
     def print(self, msg):
-        print(msg)
+        self.accelerator.print(msg)
+
+    @property
+    def device(self):
+        return self.accelerator.device
+
+    @property
+    def is_distributed(self):
+        return not (self.accelerator.distributed_type == DistributedType.NO and self.accelerator.num_processes == 1)
+
+    @property
+    def is_main(self):
+        return self.accelerator.is_main_process
 
     @property
     def is_local_main(self):
@@ -236,13 +269,14 @@ class DataPreprocessor(nn.Module):
     def generate_tokens_from_batch(self, raw_wave_for_clap=None, raw_wave_for_semantic=None, raw_wave_for_acoustic=None):
         device = self.device
 
-        clap_token_ids = get_or_compute_clap_token_ids(None, self.audio_conditioner, raw_wave_for_clap.to(device), None) if exists(raw_wave_for_clap) else None
-        semantic_token_ids = get_or_compute_semantic_token_ids(None, raw_wave_for_semantic.to(device), self.wav2vec) if exists(raw_wave_for_semantic) else None
-        coarse_token_ids, fine_token_ids = get_or_compute_acoustic_token_ids(None, None, raw_wave_for_acoustic.to(device), self.neural_codec, self.num_coarse_quantizers) if exists(raw_wave_for_acoustic) else (None, None)
+        clap_token_ids = get_or_compute_clap_token_ids(None, self.accelerator.unwrap_model(self.audio_conditioner), raw_wave_for_clap.to(device), None) if exists(raw_wave_for_clap) else None
+        semantic_token_ids = get_or_compute_semantic_token_ids(None, raw_wave_for_semantic.to(device), self.accelerator.unwrap_model(self.wav2vec)) if exists(raw_wave_for_semantic) else None
+        coarse_token_ids, fine_token_ids = get_or_compute_acoustic_token_ids(None, None, raw_wave_for_acoustic.to(device), self.accelerator.unwrap_model(self.neural_codec), self.num_coarse_quantizers) if exists(raw_wave_for_acoustic) else (None, None)
 
         return clap_token_ids, semantic_token_ids, (coarse_token_ids, fine_token_ids)
 
     def generate_shard(self, accumulate_batches, ds_fields, dl_iter, shard_name):
+        accumulate_batches = accumulate_batches // self.accelerator.num_processes # split up per process
         shard = None
         for _ in tqdm(range(accumulate_batches), desc=f'processing data for {shard_name}'):
             data_kwargs = dict(zip(ds_fields, next(dl_iter)))
@@ -257,18 +291,24 @@ class DataPreprocessor(nn.Module):
                     shard = {}
                 
                 if exists(clap_token_ids):
+                    print(clap_token_ids.shape)
+                    clap_token_ids = self.accelerator.gather_for_metrics(clap_token_ids.contiguous())
+                    self.print(f'clap_token_ids.shape: {clap_token_ids.shape}')
                     clap_token_ids = clap_token_ids.detach().cpu().numpy()
                     shard['clap_token_ids'] = np.concatenate(without_none([shard.get('clap_token_ids'), clap_token_ids]), axis=0)
 
                 if exists(semantic_token_ids):
+                    semantic_token_ids = self.accelerator.gather_for_metrics(semantic_token_ids.contiguous())
                     semantic_token_ids = semantic_token_ids.detach().cpu().numpy()
                     shard['semantic_token_ids'] = np.concatenate(without_none([shard.get('semantic_token_ids'), semantic_token_ids]), axis=0)
 
                 if exists(coarse_token_ids):
+                    coarse_token_ids = self.accelerator.gather_for_metrics(coarse_token_ids.contiguous())
                     coarse_token_ids = coarse_token_ids.detach().cpu().numpy()
                     shard['coarse_token_ids'] = np.concatenate(without_none([shard.get('coarse_token_ids'), coarse_token_ids]), axis=0)
                 
                 if exists(fine_token_ids) and shard_name != 'coarse':
+                    fine_token_ids = self.accelerator.gather_for_metrics(fine_token_ids.contiguous())
                     fine_token_ids = fine_token_ids.detach().cpu().numpy()
                     shard['fine_token_ids'] = np.concatenate(without_none([shard.get('fine_token_ids'), fine_token_ids]), axis=0)
 
@@ -288,14 +328,16 @@ class DataPreprocessor(nn.Module):
             self.print(f'processing train shard and saving in {shard_folder}')
             train_shard = self.generate_shard(self.accumulate_batches, ds_fields, dl_iter, shard_name)
             self.print(f"saving train shard containing {self.accumulate_batches * self.batch_size} samples...")
-            np.save(shard_folder / f'train_shard_{steps}.npy', train_shard)
+            if self.is_main:
+                np.save(shard_folder / f'train_{steps}.npy', train_shard)
 
         for ds_fields, valid_dl_iter, shard_folder, shard_name in zip(self.ds_fields_all, self.valid_dl_iter, self.shard_folders, self.shards):
             self.print(f'processing valid shard and saving in {shard_folder}')
             num_valid_batches = int(self.valid_frac * self.accumulate_batches)
             shard = self.generate_shard(num_valid_batches, ds_fields, valid_dl_iter, shard_name)
             self.print(f"saving valid shard containing {num_valid_batches * self.batch_size} samples...")
-            np.save(shard_folder / f'valid_shard_{steps}.npy', shard)
+            if self.is_main:
+                np.save(shard_folder / f'valid_{steps}.npy', shard)
 
         self.steps += 1
 

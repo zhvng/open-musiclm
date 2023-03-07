@@ -80,7 +80,7 @@ class SoundDataset(Dataset):
             data, sample_hz = torchaudio.load(file)
         except:
             if self.ignore_load_errors:
-                return None
+                return self[torch.randint(0, len(self), (1,)).item()]
             else:
                 raise Exception(f'error loading file {file}')
 

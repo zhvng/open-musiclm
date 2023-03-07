@@ -46,6 +46,5 @@ if __name__ == '__main__':
 
     processor = create_data_preprocessor_from_config(model_config, training_config, args.results_folder, clap, wav2vec, encodec_wrapper, args.stage, device)
 
-    print('processing!')
     processor.process()
 
