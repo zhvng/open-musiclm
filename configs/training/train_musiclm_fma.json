@@ -63,5 +63,6 @@
         "save_model_every": 1000,
         "save_predicted_tokens": true,
         "save_reconstructed_wave": true
-    }
+    },
+    "data_preprocessor_cfg": {}
 }

@@ -15,6 +15,7 @@ from .open_musiclm import (MusicLM, TokenConditionedTransformer,
                            create_coarse_transformer, create_fine_transformer,
                            create_semantic_transformer)
 from .trainer import ClapRVQTrainer, HfHubertKmeansTrainer, SingleStageTrainer
+from .preprocess import DataPreprocessor
 from .utils import exists
 
 
@@ -127,6 +128,14 @@ class SingleStageTrainerConfig:
     save_predicted_tokens: bool
     save_reconstructed_wave: bool
 
+@dataclass
+class DataPreprocessorConfig:
+    num_shards: int = 4
+    batches_per_shard: int = 500
+    batch_size: int = 64
+    folder: str = './data/fma_large'
+    valid_frac: float = 0.05
+
 @beartype
 @dataclass
 class MusicLMTrainingConfig:
@@ -135,6 +144,7 @@ class MusicLMTrainingConfig:
     semantic_trainer_cfg: SingleStageTrainerConfig
     coarse_trainer_cfg: SingleStageTrainerConfig
     fine_trainer_cfg: SingleStageTrainerConfig
+    data_preprocessor_cfg: DataPreprocessorConfig
     
 
 @beartype
@@ -163,6 +173,7 @@ def load_training_config(config_path: str) -> MusicLMTrainingConfig:
         semantic_trainer_cfg=SingleStageTrainerConfig(**config['semantic_trainer_cfg']),
         coarse_trainer_cfg=SingleStageTrainerConfig(**config['coarse_trainer_cfg']),
         fine_trainer_cfg=SingleStageTrainerConfig(**config['fine_trainer_cfg']),
+        data_preprocessor_cfg=DataPreprocessorConfig(**config['data_preprocessor_cfg']),
     )
 
 # helper functions
@@ -336,6 +347,31 @@ def create_single_stage_trainer_from_config(
     ).to(device)
 
     return trainer
+
+@beartype
+def create_data_preprocessor_from_config(
+    model_config: MusicLMModelConfig,
+    training_config: MusicLMTrainingConfig,
+    results_folder: str,
+    clap: ClapQuantized,
+    wav2vec: HfHubertWithKmeans,
+    encodec_wrapper: EncodecWrapper,
+    stage='all',
+    device='cpu'
+):
+    data_preprocessor = DataPreprocessor(
+        results_folder=results_folder,
+        audio_conditioner=clap,
+        wav2vec=wav2vec,
+        neural_codec=encodec_wrapper,
+        semantic_audio_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
+        coarse_audio_length_seconds=model_config.global_cfg.coarse_audio_length_seconds,
+        fine_audio_length_seconds=model_config.global_cfg.fine_audio_length_seconds,
+        stage=stage,
+        **asdict(training_config.data_preprocessor_cfg)
+    ).to(device)
+
+    return data_preprocessor
 
 # entire model
 
