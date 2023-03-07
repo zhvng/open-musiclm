@@ -32,6 +32,9 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    total_samples = training_config.data_preprocessor_cfg.batch_size * training_config.data_preprocessor_cfg.batches_per_shard * training_config.data_preprocessor_cfg.num_shards
+    print(f'you will be preprocessing enough data for {total_samples} unique training samples. Make sure this is enough. This may take a while...')
+
     print('loading clap...')
     clap = create_clap_quantized_from_config(model_config, args.rvq_path, device)
 
