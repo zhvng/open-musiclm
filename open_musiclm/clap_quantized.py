@@ -87,12 +87,12 @@ class ClapQuantized(nn.Module):
         return indices
 
 
-def create_clap_quantized(device=None, learn_rvq=False, checkpoint_path='./checkpoints/630k-audioset-fusion-best.pt', rvq_checkpoint_path=None, **kwargs):
+def create_clap_quantized(device=None, learn_rvq=False, enable_fusion=False, rvq_checkpoint_path=None, **kwargs):
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
-    clap = CLAP_Module(enable_fusion=True, device=device)
-    clap.load_ckpt(ckpt=checkpoint_path)
+    clap = CLAP_Module(enable_fusion=enable_fusion, device=device)
+    clap.load_ckpt()
 
     clap_quantized = ClapQuantized(clap=clap, learn_rvq=learn_rvq, **kwargs)
 

@@ -21,9 +21,9 @@ from .utils import exists
 
 @dataclass
 class ClapRVQConfig:
-    checkpoint_path: str
     rq_num_quantizers: int
     codebook_size: int
+    enable_fusion: bool = False
 
 @dataclass
 class HubertKmeansConfig:

@@ -6,13 +6,6 @@ else
     wget -P ./checkpoints  https://dl.fbaipublicfiles.com/fairseq/wav2vec/vq-wav2vec_kmeans.pt 
 fi
 
-if [ -e ./checkpoints/630k-audioset-fusion-best.pt ]
-then
-    echo "clap checkpoint already exists"
-else
-    wget -P ./checkpoints https://huggingface.co/lukewys/laion_clap/resolve/main/630k-audioset-fusion-best.pt
-fi
-
 if [ -e ./checkpoints/hubert_base_ls960.pt ]
 then
     echo "hubert checkpoint already exists"

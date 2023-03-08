@@ -14,8 +14,8 @@ dependencies:
     - git+https://github.com/lucidrains/audiolm-pytorch.git
     - einops>=0.4
     - vector-quantize-pytorch>=0.10.15
-    - librosa==0.9.2
-    - torchlibrosa==0.0.9
+    - librosa==0.10.0
+    - torchlibrosa==0.1.0
     - ftfy
     - tqdm
     - transformers

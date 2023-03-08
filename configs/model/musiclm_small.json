@@ -7,7 +7,7 @@
         "num_fine_quantizers": 5
     },
     "clap_rvq_cfg": {
-        "checkpoint_path": "./checkpoints/630k-audioset-fusion-best.pt",
+        "enable_fusion": false,
         "rq_num_quantizers": 12,
         "codebook_size": 1024
     },
