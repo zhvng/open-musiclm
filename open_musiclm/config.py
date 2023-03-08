@@ -127,6 +127,7 @@ class SingleStageTrainerConfig:
     save_model_every: int
     save_predicted_tokens: bool
     save_reconstructed_wave: bool
+    use_preprocessed_data: bool
 
 @dataclass
 class DataPreprocessorConfig:
@@ -134,6 +135,7 @@ class DataPreprocessorConfig:
     batches_per_shard: int = 500
     batch_size: int = 64
     folder: str = './data/fma_large'
+    results_folder: str = './fma_preprocessed'
     valid_frac: float = 0.05
 
 @beartype
@@ -352,7 +354,6 @@ def create_single_stage_trainer_from_config(
 def create_data_preprocessor_from_config(
     model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
-    results_folder: str,
     clap: ClapQuantized,
     wav2vec: HfHubertWithKmeans,
     encodec_wrapper: EncodecWrapper,
@@ -360,7 +361,6 @@ def create_data_preprocessor_from_config(
     device='cpu'
 ):
     data_preprocessor = DataPreprocessor(
-        results_folder=results_folder,
         audio_conditioner=clap,
         wav2vec=wav2vec,
         neural_codec=encodec_wrapper,

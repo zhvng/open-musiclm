@@ -15,7 +15,7 @@
     },
     "semantic_trainer_cfg": {
         "stage": "semantic",
-        "folder": "./data/fma_large",
+        "folder": "./data/fma_preprocessed",
         "valid_frac": 0.05,
         "lr": 0.0003,
         "lr_warmup": 3000,
@@ -29,11 +29,11 @@
         "save_model_every": 1000,
         "save_predicted_tokens": true,
         "save_reconstructed_wave": true,
-        "use_preprocessed_data": false
+        "use_preprocessed_data": true
     },
     "coarse_trainer_cfg": {
         "stage": "coarse",
-        "folder": "./data/fma_large",
+        "folder": "./data/fma_preprocessed",
         "valid_frac": 0.05,
         "lr": 0.0003,
         "lr_warmup": 6000,
@@ -47,11 +47,11 @@
         "save_model_every": 1000,
         "save_predicted_tokens": true,
         "save_reconstructed_wave": true,
-        "use_preprocessed_data": false
+        "use_preprocessed_data": true
     },
     "fine_trainer_cfg": {
         "stage": "fine",
-        "folder": "./data/fma_large",
+        "folder": "./data/fma_preprocessed",
         "valid_frac": 0.05,
         "lr": 0.0003,
         "lr_warmup": 0,
@@ -65,7 +65,14 @@
         "save_model_every": 1000,
         "save_predicted_tokens": true,
         "save_reconstructed_wave": true,
-        "use_preprocessed_data": false
+        "use_preprocessed_data": true
     },
-    "data_preprocessor_cfg": {}
+    "data_preprocessor_cfg": {
+        "num_shards": 32,
+        "batches_per_shard": 10,
+        "batch_size": 16,
+        "folder": "./data/fma_large",
+        "results_folder": "./data/fma_preprocessed",
+        "valid_frac": 0.05
+    }
 }

@@ -18,6 +18,7 @@ import torchaudio
 from torch.utils.data import DataLoader, Dataset, random_split
 from typing_extensions import Annotated
 import time
+import math
 
 from .clap_quantized import ClapQuantized
 from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
@@ -206,22 +207,21 @@ class DataPreprocessor(nn.Module):
 
         self.dl = [get_dataloader(ds, batch_size=batch_size, shuffle=True) for ds in self.ds]
 
-        self.valid_dl = [get_dataloader(self.valid_ds, batch_size=batch_size, shuffle=True) for valid_ds in self.valid_ds]
+        self.valid_dl = [get_dataloader(valid_ds, batch_size=batch_size, shuffle=True) for valid_ds in self.valid_ds]
 
         # prepare
         (
-            self.dl,
-            self.valid_dl,
             self.audio_conditioner,
             self.neural_codec,
             self.wav2vec,
         ) = self.accelerator.prepare(
-            self.dl,
-            self.valid_dl,
             self.audio_conditioner,
             self.neural_codec,
             self.wav2vec,
         )
+
+        self.dl = [self.accelerator.prepare(dl) for dl in self.dl]
+        self.valid_dl = [self.accelerator.prepare(valid_dl) for valid_dl in self.valid_dl]
 
         # dataloader iterators
 
@@ -276,7 +276,7 @@ class DataPreprocessor(nn.Module):
         return clap_token_ids, semantic_token_ids, (coarse_token_ids, fine_token_ids)
 
     def generate_shard(self, accumulate_batches, ds_fields, dl_iter, shard_name):
-        accumulate_batches = accumulate_batches // self.accelerator.num_processes # split up per process
+        accumulate_batches = math.ceil(accumulate_batches / self.accelerator.num_processes) # split up per process
         shard = None
         for _ in tqdm(range(accumulate_batches), desc=f'processing data for {shard_name}'):
             data_kwargs = dict(zip(ds_fields, next(dl_iter)))
@@ -291,9 +291,7 @@ class DataPreprocessor(nn.Module):
                     shard = {}
                 
                 if exists(clap_token_ids):
-                    print(clap_token_ids.shape)
                     clap_token_ids = self.accelerator.gather_for_metrics(clap_token_ids.contiguous())
-                    self.print(f'clap_token_ids.shape: {clap_token_ids.shape}')
                     clap_token_ids = clap_token_ids.detach().cpu().numpy()
                     shard['clap_token_ids'] = np.concatenate(without_none([shard.get('clap_token_ids'), clap_token_ids]), axis=0)
 
@@ -333,11 +331,11 @@ class DataPreprocessor(nn.Module):
 
         for ds_fields, valid_dl_iter, shard_folder, shard_name in zip(self.ds_fields_all, self.valid_dl_iter, self.shard_folders, self.shards):
             self.print(f'processing valid shard and saving in {shard_folder}')
-            num_valid_batches = int(self.valid_frac * self.accumulate_batches)
-            shard = self.generate_shard(num_valid_batches, ds_fields, valid_dl_iter, shard_name)
+            num_valid_batches = math.ceil(self.valid_frac * self.accumulate_batches)
+            valid_shard = self.generate_shard(num_valid_batches, ds_fields, valid_dl_iter, shard_name)
             self.print(f"saving valid shard containing {num_valid_batches * self.batch_size} samples...")
             if self.is_main:
-                np.save(shard_folder / f'valid_{steps}.npy', shard)
+                np.save(shard_folder / f'valid_{steps}.npy', valid_shard)
 
         self.steps += 1
 

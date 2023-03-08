@@ -36,11 +36,18 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    print('loading clap...')
-    clap = create_clap_quantized_from_config(model_config, args.rvq_path, device)
+    use_preprocessed_data = training_config.semantic_trainer_cfg.use_preprocessed_data
 
-    print('loading wav2vec...')
-    wav2vec = create_hubert_kmeans_from_config(model_config, args.kmeans_path, device)
+    if use_preprocessed_data:
+        clap = None
+        wav2vec = None
+        print(f'training from preprocessed data {training_config.semantic_trainer_cfg.folder}')
+    else:
+        print('loading clap...')
+        clap = create_clap_quantized_from_config(model_config, args.rvq_path, device)
+
+        print('loading wav2vec...')
+        wav2vec = create_hubert_kmeans_from_config(model_config, args.kmeans_path, device)
 
     print('loading semantic stage...')
     semantic_transformer = create_semantic_transformer_from_config(model_config, None, device)

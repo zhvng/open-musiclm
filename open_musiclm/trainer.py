@@ -21,7 +21,7 @@ import time
 
 from .clap_quantized import ClapQuantized
 from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
-from .data import SoundDataset, get_dataloader
+from .data import SoundDataset, get_dataloader, PreprocessedDataset, get_preprocessed_dataloader
 from .model_types import NeuralCodec, Wav2Vec
 from .open_musiclm import (CoarseStage, FineStage, SemanticStage,
                            TokenConditionedTransformer)
@@ -113,6 +113,7 @@ class SingleStageTrainer(nn.Module):
         cross_entropy_loss_weights: Optional[List[float]]=None,
         ignore_load_errors=True,
         folder=None,
+        use_preprocessed_data=False,
         lr=3e-4,
         lr_warmup=0,
         grad_accum_every=1,
@@ -130,28 +131,33 @@ class SingleStageTrainer(nn.Module):
         super().__init__()
         self.accelerator = Accelerator(**accelerate_kwargs)
 
+        self.use_preprocessed_data = use_preprocessed_data
+
         self.transformer = transformer
+
         self.wav2vec = wav2vec
-        self.transformer = transformer
         self.audio_conditioner = audio_conditioner
         self.neural_codec = neural_codec
 
         self.stage = stage
 
         if stage == 'semantic':
-            assert exists(audio_conditioner) and exists(wav2vec)
+            assert self.use_preprocessed_data or (exists(audio_conditioner) and exists(wav2vec))
             self.train_wrapper = SemanticStage(
                 semantic_transformer=transformer,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
                 cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 1.])
             )
-            self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic')
-            target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz)
-            normalize = (False, True)
-            seq_len_multiple_of = wav2vec.seq_len_multiple_of
+            if self.use_preprocessed_data:
+                self.ds_fields = ('clap_token_ids', 'semantic_token_ids')
+            else:
+                self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic')
+                target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz)
+                normalize = (False, True)
+                seq_len_multiple_of = wav2vec.seq_len_multiple_of
         elif stage == 'coarse':
-            assert exists(wav2vec) and exists(audio_conditioner) and exists(neural_codec)
+            assert self.use_preprocessed_data or (exists(wav2vec) and exists(audio_conditioner) and exists(neural_codec))
             self.train_wrapper = CoarseStage(
                 coarse_transformer=transformer,
                 neural_codec=neural_codec,
@@ -159,22 +165,28 @@ class SingleStageTrainer(nn.Module):
                 clap=audio_conditioner,
                 cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.])
             )
-            self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic', 'raw_wave_for_acoustic')
-            target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz, neural_codec.sample_rate)
-            normalize = (False, True, False)
-            seq_len_multiple_of = wav2vec.seq_len_multiple_of
+            if self.use_preprocessed_data:
+                self.ds_fields = ('clap_token_ids', 'semantic_token_ids', 'coarse_token_ids')
+            else:
+                self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic', 'raw_wave_for_acoustic')
+                target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz, neural_codec.sample_rate)
+                normalize = (False, True, False)
+                seq_len_multiple_of = wav2vec.seq_len_multiple_of
         elif stage == 'fine':
-            assert exists(audio_conditioner) and exists(neural_codec)
+            assert self.use_preprocessed_data or (exists(audio_conditioner) and exists(neural_codec))
             self.train_wrapper = FineStage(
                 fine_transformer=transformer,
                 clap=audio_conditioner,
                 neural_codec=neural_codec,
                 cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.])
             )
-            self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_acoustic')
-            target_sample_hz = (audio_conditioner.sample_rate, neural_codec.sample_rate)
-            normalize = (False, False)
-            seq_len_multiple_of = None
+            if self.use_preprocessed_data:
+                self.ds_fields = ('clap_token_ids', 'coarse_token_ids', 'fine_token_ids')
+            else:
+                self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_acoustic')
+                target_sample_hz = (audio_conditioner.sample_rate, neural_codec.sample_rate)
+                normalize = (False, False)
+                seq_len_multiple_of = None
         else:
             raise ValueError(f'invalid stage: {stage}')
 
@@ -202,39 +214,45 @@ class SingleStageTrainer(nn.Module):
 
         # create dataset
 
-        self.ds = dataset
-        if not exists(self.ds):
-            assert exists(
-                folder), 'folder must be passed in, if not passing in a custom dataset for text conditioned audio synthesis training'
-
-            self.ds = SoundDataset(
-                folder,
-                max_length_seconds=data_max_length_seconds,
-                normalize=normalize,
-                target_sample_hz=target_sample_hz,
-                seq_len_multiple_of=seq_len_multiple_of,
-                ignore_files=default(ignore_files, []),
-                ignore_load_errors=ignore_load_errors
-            )
-
-        # split for validation
-
-        if valid_frac > 0:
-            train_size = int((1 - valid_frac) * len(self.ds))
-            valid_size = len(self.ds) - train_size
-            self.ds, self.valid_ds = random_split(
-                self.ds, [train_size, valid_size], generator=torch.Generator().manual_seed(random_split_seed))
-            self.print(
-                f'training with dataset of {len(self.ds)} samples and validating with randomly splitted {len(self.valid_ds)} samples')
+        if self.use_preprocessed_data:
+            self.ds = PreprocessedDataset(folder, stage, self.ds_fields, split='train')
+            self.valid_ds = PreprocessedDataset(folder, stage, self.ds_fields, split='valid')
+            self.dl = get_preprocessed_dataloader(self.ds, batch_size=batch_size)
+            self.valid_dl = get_preprocessed_dataloader(self.valid_ds, batch_size=batch_size)
         else:
-            self.valid_ds = self.ds
-            self.print(f'training with shared training and valid dataset of {len(self.ds)} samples')
+            self.ds = dataset
+            if not exists(self.ds):
+                assert exists(
+                    folder), 'folder must be passed in, if not passing in a custom dataset for text conditioned audio synthesis training'
 
-        # dataloader
+                self.ds = SoundDataset(
+                    folder,
+                    max_length_seconds=data_max_length_seconds,
+                    normalize=normalize,
+                    target_sample_hz=target_sample_hz,
+                    seq_len_multiple_of=seq_len_multiple_of,
+                    ignore_files=default(ignore_files, []),
+                    ignore_load_errors=ignore_load_errors
+                )
 
-        self.dl = get_dataloader(self.ds, batch_size=batch_size, shuffle=True)
+            # split for validation
 
-        self.valid_dl = get_dataloader(self.valid_ds, batch_size=batch_size, shuffle=True)
+            if valid_frac > 0:
+                train_size = int((1 - valid_frac) * len(self.ds))
+                valid_size = len(self.ds) - train_size
+                self.ds, self.valid_ds = random_split(
+                    self.ds, [train_size, valid_size], generator=torch.Generator().manual_seed(random_split_seed))
+                self.print(
+                    f'training with dataset of {len(self.ds)} samples and validating with randomly splitted {len(self.valid_ds)} samples')
+            else:
+                self.valid_ds = self.ds
+                self.print(f'training with shared training and valid dataset of {len(self.ds)} samples')
+
+            # dataloader
+
+            self.dl = get_dataloader(self.ds, batch_size=batch_size, shuffle=True)
+
+            self.valid_dl = get_dataloader(self.valid_ds, batch_size=batch_size, shuffle=True)
 
         # prepare with accelerator
 
@@ -441,7 +459,7 @@ class SingleStageTrainer(nn.Module):
             self.save(model_path, optim_path, scheduler_path)
 
             # save audio conditioner (clap) rvq checkpoint
-            if self.audio_conditioner.learn_rvq:
+            if exists(self.audio_conditioner) and self.audio_conditioner.learn_rvq:
                 rvq_state_dict = self.audio_conditioner.rq.state_dict()
                 torch.save(rvq_state_dict, str(self.results_folder / f'{self.stage}.conditioner_rvq.{steps}.pt'))
                 

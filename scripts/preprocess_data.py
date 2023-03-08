@@ -44,7 +44,7 @@ if __name__ == '__main__':
     print('loading encodec...')
     encodec_wrapper = create_encodec_from_config(model_config, device)
 
-    processor = create_data_preprocessor_from_config(model_config, training_config, args.results_folder, clap, wav2vec, encodec_wrapper, args.stage, device)
+    processor = create_data_preprocessor_from_config(model_config, training_config, clap, wav2vec, encodec_wrapper, args.stage, device)
 
     processor.process()
 

@@ -1,7 +1,10 @@
 from functools import partial, wraps
 from pathlib import Path
+from beartype.typing import Literal
+from itertools import cycle
 
 import torch
+import numpy as np
 import torch.nn.functional as F
 import torchaudio
 from beartype import beartype
@@ -9,7 +12,7 @@ from beartype.door import is_bearable
 from beartype.typing import Optional, Tuple, Union, List
 from einops import rearrange
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torchaudio.functional import resample
 
 from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16, zero_mean_unit_var_norm
@@ -188,3 +191,53 @@ def pad_to_longest_fn(data):
 def get_dataloader(ds, pad_to_longest = True, **kwargs):
     collate_fn = pad_to_longest_fn if pad_to_longest else curtail_to_shortest_collate
     return DataLoader(ds, collate_fn = collate_fn, **kwargs)
+
+
+@beartype
+class PreprocessedDataset(IterableDataset):
+    def __init__(
+        self,
+        folder,
+        stage: Literal['semantic', 'coarse', 'fine'],
+        ds_fields: Tuple[str, ...],
+        split: Literal['train', 'valid']
+    ):
+        super().__init__()
+        path = Path(folder) / stage
+        assert path.exists(), 'preprocessed data does not exist. run ./scripts/preprocess_data.py first.'
+
+        shards = []
+        for shard in path.glob(f'{split}_*.npy'):
+            shards.append(shard)
+        assert len(shards) > 0, 'no shards found'
+        shards = sorted(shards)
+
+        self.shards = cycle(shards)
+        self.ds_fields = ds_fields
+
+    def load_shard(self, file_path):
+        return np.load(file_path, allow_pickle=True)
+
+    def __iter__(self):
+        while exists(x := next(self.shards, None)):
+            loaded_shard = self.load_shard(x).item()
+
+            if not exists(loaded_shard):
+                raise ValueError(f'found empty shard {x}. it is likely that batches_per_shard was too small when preprocessing the data.')
+
+            data = []
+            data_length = None
+            for key in self.ds_fields:
+                val = loaded_shard[key]
+                data.append(val)
+
+                if exists(data_length):
+                    assert data_length == len(val), f'data length mismatch in shard {x}'
+                else:
+                    data_length = len(val)
+
+            for i in range(data_length):
+                yield tuple(torch.tensor(val[i]) for val in data)
+
+def get_preprocessed_dataloader(ds, **kwargs):
+    return DataLoader(ds, **kwargs)
