@@ -16,7 +16,6 @@ from open_musiclm.config import (create_clap_quantized_from_config,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train coarse stage')
     parser.add_argument('--stage', default='all', help='Name of the stage we want to process data for (semantic, coarse, fine, all). Provide "all" to process all stages in succession.')
-    parser.add_argument('--results_folder', default='./data/preprocessed_fma')
     parser.add_argument('--model_config', default='./configs/model/musiclm_small.json')
     parser.add_argument('--training_config', default='./configs/training/train_fma_preprocess.json')
     parser.add_argument('--rvq_path', default='./checkpoints/clap.rvq.350.pt')
@@ -24,7 +23,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    print(f'saving to {args.results_folder}, using model config {args.model_config}, training config {args.training_config}, rvq checkpoint {args.rvq_path}, kmeans checkpoint {args.kmeans_path}')
+    print(f'using model config {args.model_config}, training config {args.training_config}, rvq checkpoint {args.rvq_path}, kmeans checkpoint {args.kmeans_path}')
     print(f'processing stage(s): {args.stage}')
 
     model_config = load_model_config(args.model_config)
