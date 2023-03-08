@@ -6,6 +6,8 @@ test.wav
 logs/
 .vscode
 
+**/630k-*.pt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
