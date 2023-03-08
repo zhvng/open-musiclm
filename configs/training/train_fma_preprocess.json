@@ -69,8 +69,8 @@
     },
     "data_preprocessor_cfg": {
         "num_shards": 32,
-        "batches_per_shard": 10,
-        "batch_size": 16,
+        "batches_per_shard": 1000,
+        "batch_size": 32,
         "folder": "./data/fma_large",
         "results_folder": "./data/fma_preprocessed",
         "valid_frac": 0.05
