@@ -9,58 +9,32 @@ from transformers import RobertaTokenizer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from open_musiclm.clap import create_model
-from open_musiclm.clap_quantized import ClapQuantized
+from open_musiclm.clap_quantized import ClapQuantized, create_clap_quantized
 
-# tokenize = RobertaTokenizer.from_pretrained('roberta-base')
-
-# def tokenizer(text):
-#     result = tokenize(
-#         text,
-#         padding="max_length",
-#         truncation=True,
-#         max_length=77,
-#         return_tensors="pt",
-#     )
-#     return {k: v.squeeze(0) for k, v in result.items()}
-
+text_data = ['male rap',
+            'male rapping over a synth pad',
+            'female singing',
+            'female singing over a synth pad',
+            'male singing over a synth pad',
+            'male rapping chill voice',
+            'male with deep voice',
+            'male singing then rapping, synth in the background',
+            'producer tag then drake rapping',
+            'calming melody',
+            'upbeat, hype',
+            'pause and then the beat drops, and a male rapper is rapping over a trap beat',
+            'male rapping over a hip hop beat',
+            'house music',
+            'rock song with piano',
+            'groovy melody with piano and a male singing']
 
 def infer_text(clap_wrapper, return_embedding=False):
 
-    # load the text, can be a list (i.e. batch size)
-    # text_data = ["air horn",
-    #              "high pitched air horn",
-    #              "buzzing noise",
-    #              "air horn with a buzzing noise",
-    #              "air horn with a low pitched rumble",
-    #              "horn"]
 
-    text_data = ['male rap',
-                 'male rapping over a synth pad',
-                 'female singing',
-                 'female singing over a synth pad',
-                 'male rapping chill voice',
-                 'male with deep voice',
-                 'male singing then rapping, synth in the background',
-                 'producer tag then drake rapping',
-                 'drake',
-                 'future',
-                 'metro boomin']
-    # tokenize for roberta, if you want to tokenize for another text encoder, please refer to data.py#L43-90
 
     text_embed = clap_wrapper(text_input=text_data, return_embedding=return_embedding)
 
     return text_embed
-
-
-def int16_to_float32(x):
-    return (x / 32767.0).type(torch.float32)
-
-
-def float32_to_int16(x):
-    x = torch.clamp(x, min=-1., max=1.)
-    return (x * 32767.).type(torch.int16)
-
 
 def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False, device: str = 'cuda'):
 
@@ -69,26 +43,22 @@ def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False, dev
     # load the waveform of the shape (T,), should resample to 48000
     audio_waveform, sr = torchaudio.load('/u/zhvng/projects/audio_files/jumpman.mp3')
 
+    wave_2, sr_2 = torchaudio.load('/u/zhvng/projects/open-musiclm/data/fma_large/000/000048.mp3')
+
     if audio_waveform.shape[0] > 1:
         # the audio has more than 1 channel, convert to mono
         audio_waveform = torch.mean(audio_waveform, dim=0, keepdim=True)
+    if wave_2.shape[0] > 1:
+        wave_2 = torch.mean(wave_2, dim=0, keepdim=True)
 
-    # print(audio_waveform.shape, sr)
     audio_waveform = resample(audio_waveform, sr, 48000)
-    # audio_waveform = audio_waveform.squeeze(0)
-    # quantize
-    audio_waveform = int16_to_float32(float32_to_int16(audio_waveform))
-    # audio_waveform = torch.from_numpy(audio_waveform).float()
+    wave_2 = resample(wave_2, sr_2, 48000)
 
-    # audio_dict = {}
-
-    # # the 'fusion' truncate mode can be changed to 'rand_trunc' if run in unfusion mode
-    # audio_dict = get_audio_features(
-    #     audio_dict, audio_waveform, 480000,
-    #     data_truncating='fusion',
-    #     data_filling='repeatpad',
-    #     audio_cfg=clap_wrapper.clap_cfg['audio_cfg']
-    # )
+    # audio_waveform = audio_waveform[:, :48000 * 30]
+    audio_waveform_1 = audio_waveform[:, :48000 * 10]
+    audio_waveform_2 = wave_2[:, :48000 * 10]
+    # audio_waveform_3 = audio_waveform[:, 48000 * 20 : 48000 * 50]
+    audio_waveform = torch.cat([audio_waveform_1, audio_waveform_2], dim=0)
 
     audio_embed = clap_wrapper(audio_input=audio_waveform.to(device), return_embedding=return_embedding)
 
@@ -97,40 +67,21 @@ def infer_audio(clap_wrapper: ClapQuantized, return_embedding: bool = False, dev
 
 if __name__ == "__main__":
 
-    device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
-    print(device)
-    precision = 'fp32'
-    amodel = 'HTSAT-tiny'  # or 'PANN-14'
-    tmodel = 'roberta'  # the best text encoder in our training
-    enable_fusion = True  # False if you do not want to use the fusion model
-    fusion_type = 'aff_2d'
-    # the checkpoint name, the unfusion model can also be loaded.
-    pretrained = "/u/zhvng/projects/clap-chkpt/laion_audioset_fusion/checkpoints/epoch_top_0.pt"
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    model, model_cfg = create_model(
-        amodel,
-        tmodel,
-        pretrained,
-        precision=precision,
-        device=device,
-        enable_fusion=enable_fusion,
-        fusion_type=fusion_type,
-    )
-
-    clap_wrapper = ClapQuantized(clap=model, clap_cfg=model_cfg)
-    clap_wrapper = clap_wrapper.to(device)
+    clap_wrapper = create_clap_quantized(device=device, learn_rvq=False).to(device)
 
     text_embeds = infer_text(clap_wrapper, return_embedding=True)
     audio_embed = infer_audio(clap_wrapper, return_embedding=True, device=device)
 
-    print(text_embeds)
-    print(text_embeds.size())
+    # print(text_embeds)
+    print(text_embeds.shape)
 
-    print(audio_embed)
-    print(audio_embed.size())
+    # print(audio_embed)
+    print(audio_embed.shape)
 
-    for text_embed in text_embeds:
+    for i, text_embed in enumerate(text_embeds):
         # get cosine similarity with audio_embed
         cos_sim = torch.nn.functional.cosine_similarity(
             audio_embed, text_embed, dim=-1)
-        print(cos_sim)
+        print(text_data[i], cos_sim.cpu().numpy())

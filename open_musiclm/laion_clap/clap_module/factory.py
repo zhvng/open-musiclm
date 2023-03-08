@@ -145,7 +145,7 @@ def create_model(
             if checkpoint_path:
                 logging.info(f"Loading pretrained {amodel_name}-{tmodel_name} weights ({pretrained}).")
                 ckpt = load_state_dict(checkpoint_path, skip_params=True)
-                model.load_state_dict(ckpt, strict=False)
+                model.load_state_dict(ckpt)
                 param_names = [n for n, p in model.named_parameters()]
                 for n in param_names:
                     print(n, "\t", "Loaded" if n in ckpt else "Unloaded")
