@@ -25,6 +25,7 @@ if __name__ == '__main__':
     hubert_kmeans = create_hubert_kmeans_from_config(model_config, None, device)
 
     trainer = create_hubert_kmeans_trainer_from_config(
+        model_config=model_config,
         training_config=training_config,
         hubert_kmeans=hubert_kmeans,
         results_folder=args.results_folder,

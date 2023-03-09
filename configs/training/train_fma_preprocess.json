@@ -10,8 +10,7 @@
     "hubert_kmeans_trainer_cfg": {
         "folder": "./data/fma_large",
         "feature_extraction_num_steps": 320,
-        "feature_extraction_batch_size": 32,
-        "data_max_length_seconds": 8.0
+        "feature_extraction_batch_size": 32
     },
     "semantic_trainer_cfg": {
         "stage": "semantic",

@@ -30,6 +30,7 @@ if __name__ == '__main__':
     clap = create_clap_quantized_from_config(model_config, None, device)
 
     trainer = create_clap_rvq_trainer_from_config(
+        model_config=model_config,
         training_config=training_config,
         clap=clap,
         results_folder=args.results_folder,

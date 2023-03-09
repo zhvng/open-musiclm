@@ -108,7 +108,6 @@ class HubertKmeansTrainerConfig:
     folder: str
     feature_extraction_num_steps: int
     feature_extraction_batch_size: int
-    data_max_length_seconds: float
 
 @dataclass
 class SingleStageTrainerConfig:
@@ -281,6 +280,7 @@ def create_fine_transformer_from_config(
 
 @beartype
 def create_clap_rvq_trainer_from_config(
+    model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
     clap: ClapQuantized,
     results_folder: str,
@@ -289,6 +289,7 @@ def create_clap_rvq_trainer_from_config(
     trainer = ClapRVQTrainer(
         audio_conditioner=clap,
         results_folder=results_folder,
+        data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         **asdict(training_config.clap_rvq_trainer_cfg)
     ).to(device)
 
@@ -296,6 +297,7 @@ def create_clap_rvq_trainer_from_config(
 
 @beartype
 def create_hubert_kmeans_trainer_from_config(
+    model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
     hubert_kmeans: HfHubertWithKmeans,
     results_folder: str,
@@ -304,6 +306,7 @@ def create_hubert_kmeans_trainer_from_config(
     trainer = HfHubertKmeansTrainer(
         hubert_kmeans=hubert_kmeans,
         results_folder=results_folder,
+        data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         **asdict(training_config.hubert_kmeans_trainer_cfg),
     ).to(device)
 
