@@ -284,12 +284,14 @@ def create_clap_rvq_trainer_from_config(
     training_config: MusicLMTrainingConfig,
     clap: ClapQuantized,
     results_folder: str,
-    device
+    device,
+    accelerate_kwargs: dict = {}
 ):
     trainer = ClapRVQTrainer(
         audio_conditioner=clap,
         results_folder=results_folder,
         data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
+        accelerate_kwargs=accelerate_kwargs,
         **asdict(training_config.clap_rvq_trainer_cfg)
     ).to(device)
 
