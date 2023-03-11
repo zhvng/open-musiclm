@@ -664,8 +664,10 @@ class HfHubertKmeansTrainer(nn.Module):
         folder=None,
         data_max_length_seconds: Union[float, int] = 1,
         results_folder='./results',
+        accelerate_kwargs: dict = {},
     ):
         super().__init__()
+        self.accelerator = Accelerator(**accelerate_kwargs)
 
         self.ds = dataset
         self.feature_extraction_num_steps = feature_extraction_num_steps
@@ -693,6 +695,14 @@ class HfHubertKmeansTrainer(nn.Module):
 
         self.dl = get_dataloader(self.ds, batch_size=feature_extraction_batch_size, shuffle=True)
 
+        (
+            self.hubert_kmeans,
+            self.dl
+        ) = self.accelerator.prepare(
+            self.hubert_kmeans,
+            self.dl
+        )
+
         # dataloader iterators
 
         self.dl_iter = cycle(self.dl)
@@ -705,11 +715,23 @@ class HfHubertKmeansTrainer(nn.Module):
         self.results_folder.mkdir(parents=True, exist_ok=True)
 
     def print(self, msg):
-        print(msg)
+        self.accelerator.print(msg)
 
     @property
     def device(self):
-        return next(self.parameters()).device
+        return self.accelerator.device
+
+    @property
+    def is_distributed(self):
+        return not (self.accelerator.distributed_type == DistributedType.NO and self.accelerator.num_processes == 1)
+
+    @property
+    def is_main(self):
+        return self.accelerator.is_main_process
+
+    @property
+    def is_local_main(self):
+        return self.accelerator.is_local_main_process
 
     def extract_hubert_features(self):
 
@@ -719,6 +741,7 @@ class HfHubertKmeansTrainer(nn.Module):
 
         # get features
         embed = rearrange(embed, 'b t f -> (b t) f')
+        embed = self.accelerator.gather_for_metrics(embed)
         embed = embed.detach().cpu().numpy()
 
         return embed
@@ -727,8 +750,9 @@ class HfHubertKmeansTrainer(nn.Module):
 
         self.print('step 1: extracting features. must wait for this to complete before training kmeans.')
         features = []
-        while self.steps < self.feature_extraction_num_steps:
-            self.print(f'{int(self.steps.item())} / {self.feature_extraction_num_steps} steps')
+        num_steps = math.ceil(self.feature_extraction_num_steps / self.accelerator.num_processes)
+        while self.steps < num_steps:
+            self.print(f'{int(self.steps.item())} / {num_steps} steps')
             features.append(self.extract_hubert_features())
             self.steps += 1
 
@@ -737,6 +761,7 @@ class HfHubertKmeansTrainer(nn.Module):
         features = features[~np.any(np.isnan(features), axis=-1)]
 
         self.print('step 2: training kmeans')
-        learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'), n_clusters=self.hubert_kmeans.codebook_size)
+        if self.is_main:
+            learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'), n_clusters=self.hubert_kmeans.codebook_size)
 
         self.print('training complete')

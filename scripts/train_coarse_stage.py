@@ -75,5 +75,4 @@ if __name__ == '__main__':
         print(f'loading checkpoints: {checkpoints}')
         trainer.load(*checkpoints)
 
-    print('training!')
     trainer.train()
