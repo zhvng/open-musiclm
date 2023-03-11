@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
-from accelerate import Accelerator, DistributedType
+from accelerate import Accelerator, DistributedType 
 from beartype import beartype
 from beartype.door import is_bearable
 from beartype.typing import Dict, List, Literal, Optional, Union
@@ -284,7 +284,7 @@ class SingleStageTrainer(nn.Module):
 
         self.results_folder = Path(results_folder)
 
-        if len([*self.results_folder.glob('**/*')]) > 0 and yes_or_no('do you want to clear previous experiment checkpoints and results?'):
+        if self.is_main and len([*self.results_folder.glob('**/*')]) > 0 and yes_or_no('do you want to clear previous experiment checkpoints and results?'):
             rmtree(str(self.results_folder))
 
         self.results_folder.mkdir(parents=True, exist_ok=True)
@@ -387,13 +387,11 @@ class SingleStageTrainer(nn.Module):
         if exists(self.scheduler):
             self.scheduler.step()
 
-        # log
-
         self.print(f"{steps}: loss: {logs['loss']}")
-        self.accelerator.log({"train_loss": logs['loss']}, step=steps)
 
         # sample results every so often
 
+        valid_loss = None
         if self.is_main and not (steps % self.save_results_every):
             non_empty_batch = False
             while non_empty_batch is False:
@@ -406,7 +404,6 @@ class SingleStageTrainer(nn.Module):
                     valid_loss, all_logits, all_labels = self.train_wrapper(**data_kwargs, return_loss=True)
 
                 self.print(f'{steps}: valid loss {valid_loss}')
-                self.accelerator.log({"valid_loss": valid_loss}, step=steps)
 
                 if self.save_predicted_tokens:
                     # interleave pred_tokens and gt_tokens and save to a text file
@@ -446,6 +443,8 @@ class SingleStageTrainer(nn.Module):
                     waves = waves.cpu()
                     for i, wave in enumerate(waves):
                         torchaudio.save(str(self.waves_folder / f'{self.stage}.reconstructed_wave_{i}.{steps}.wav'), wave, self.neural_codec.sample_rate)
+
+        self.accelerator.log({"train_loss": logs['loss'], "valid_loss": valid_loss}, step=steps)
 
         # save model every so often
 
