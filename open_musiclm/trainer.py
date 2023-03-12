@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
-from accelerate import Accelerator, DistributedType 
+from accelerate import Accelerator, DistributedType, DistributedDataParallelKwargs
 from beartype import beartype
 from beartype.door import is_bearable
 from beartype.typing import Dict, List, Literal, Optional, Union
@@ -130,7 +130,8 @@ class SingleStageTrainer(nn.Module):
         accelerate_kwargs: dict = {}
     ):
         super().__init__()
-        self.accelerator = Accelerator(**accelerate_kwargs)
+        kwargs_handler = DistributedDataParallelKwargs(find_unused_parameters=True)
+        self.accelerator = Accelerator(**accelerate_kwargs, kwargs_handlers=[kwargs_handler])
 
         self.use_preprocessed_data = use_preprocessed_data
 
@@ -370,14 +371,14 @@ class SingleStageTrainer(nn.Module):
             while non_empty_batch is False:
                 if len(data_kwargs) == 0:
                     continue
+                
+                non_empty_batch = True
 
                 loss, _, _ = self.train_wrapper(**data_kwargs, return_loss=True)
 
                 self.accelerator.backward(loss / self.grad_accum_every)
 
                 accum_log(logs, {'loss': loss.item() / self.grad_accum_every})
-
-                non_empty_batch = True
 
         if exists(self.max_grad_norm):
             self.accelerator.clip_grad_norm_(self.transformer.parameters(), self.max_grad_norm)
@@ -392,20 +393,24 @@ class SingleStageTrainer(nn.Module):
         # sample results every so often
 
         valid_loss = None
-        if self.is_main and not (steps % self.save_results_every):
+        if not (steps % self.save_results_every):
             non_empty_batch = False
             while non_empty_batch is False:
                 data_kwargs = dict(zip(self.ds_fields, next(self.valid_dl_iter)))
                 if len(data_kwargs) == 0:
                     continue
                 
+                non_empty_batch = True
+                
                 with torch.no_grad():
                     self.train_wrapper.eval()
-                    valid_loss, all_logits, all_labels = self.train_wrapper(**data_kwargs, return_loss=True)
+                    valid_loss, all_logits, all_labels = self.accelerator.unwrap_model(self.train_wrapper)(**data_kwargs, return_loss=True)
+
+                valid_loss = self.accelerator.reduce(valid_loss, 'mean')
 
                 self.print(f'{steps}: valid loss {valid_loss}')
 
-                if self.save_predicted_tokens:
+                if self.is_main and self.save_predicted_tokens:
                     # interleave pred_tokens and gt_tokens and save to a text file
 
                     assert exists(self.tokens_folder)
@@ -419,9 +424,7 @@ class SingleStageTrainer(nn.Module):
 
                     np.savetxt(str(self.tokens_folder / f'{self.stage}.tokens.{steps}.txt'), interleave, fmt='%-6s', header='predicted and ground truth tokens from the validation set. row 0%2 is predicted, 1%2 is ground truth\n ')
 
-                    non_empty_batch = True
-
-                if self.save_reconstructed_wave and (self.stage == 'coarse' or self.stage=='fine'):
+                if self.is_main and self.save_reconstructed_wave and (self.stage == 'coarse' or self.stage=='fine'):
                     # For coarse and fine stages, reconstruct teacher-forced wave from logits 
 
                     assert exists(self.neural_codec)
