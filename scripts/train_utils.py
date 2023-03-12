@@ -42,4 +42,4 @@ def get_latest_checkpoints(results_folder):
     if scheduler_path is not None:
         assert highest_transformer_step == highest_scheduler_step, 'transformer and scheduler checkpoints are not aligned'
 
-    return transformer_path, optimizer_path, scheduler_path
+    return (transformer_path, optimizer_path, scheduler_path), highest_transformer_step

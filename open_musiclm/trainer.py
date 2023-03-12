@@ -312,7 +312,7 @@ class SingleStageTrainer(nn.Module):
             scheduler_state_dict = self.scheduler.state_dict()
             torch.save(scheduler_state_dict, scheduler_path)
       
-    def load(self, model_path, optim_path, scheduler_path=None):
+    def load(self, model_path, optim_path, scheduler_path=None, steps=0):
         model_path = Path(model_path)
         optim_path = Path(optim_path)
         assert model_path.exists() and optim_path.exists()
@@ -329,6 +329,14 @@ class SingleStageTrainer(nn.Module):
             assert scheduler_path.exists()
             scheduler_state_dict = torch.load(scheduler_path, map_location=self.device)
             self.scheduler.load_state_dict(scheduler_state_dict)
+
+        if steps > 0:
+            assert int(self.steps.item()) == 0, 'steps should be 0 when loading a checkpoint for the first time'
+            self.dl = self.accelerator.skip_first_batches(self.dl, steps * self.grad_accum_every)
+            self.valid_dl = self.accelerator.skip_first_batches(self.valid_dl, steps * self.grad_accum_every)
+            self.dl_iter = cycle(self.dl)
+            self.valid_dl_iter = cycle(self.valid_dl)
+            self.steps += steps
 
     def print(self, msg):
         self.accelerator.print(msg)

@@ -71,8 +71,8 @@ if __name__ == '__main__':
         })
 
     if args.continue_from_dir is not None:
-        checkpoints = get_latest_checkpoints(args.continue_from_dir)
+        checkpoints, steps = get_latest_checkpoints(args.continue_from_dir)
         print(f'loading checkpoints: {checkpoints}')
-        trainer.load(*checkpoints)
+        trainer.load(*checkpoints, steps=steps+1)
 
     trainer.train()
