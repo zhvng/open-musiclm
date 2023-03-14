@@ -14,6 +14,9 @@ then
 else
     echo "unzipping fma_large.zip, may take a while..."
     echo "497109f4dd721066b5ce5e5f250ec604dc78939e  data/fma_large.zip"    | sha1sum -c -
+
+    export UNZIP_DISABLE_ZIPBOMB_DETECTION=TRUE	
+
     cd data
     unzip fma_large.zip
 fi
