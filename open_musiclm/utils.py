@@ -3,6 +3,8 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from beartype import beartype
+from pathlib import Path
+import shutil
 
 from einops import rearrange, repeat, reduce
 
@@ -145,3 +147,11 @@ def float32_to_int16(x):
 
 def zero_mean_unit_var_norm(x):
     return (x - x.mean(dim=-1, keepdim=True)) / torch.sqrt(x.var(dim=-1, keepdim=True) + 1e-7)
+
+# helper for saving config
+
+def copy_file_to_folder(file_path: str, folder_path: str):
+    config_file = Path(file_path)
+    folder = Path(folder_path)
+
+    shutil.copy(str(config_file), str(folder / config_file.name))

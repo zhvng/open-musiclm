@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 from beartype import beartype
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, List
 
 from .clap_quantized import ClapQuantized, create_clap_quantized
 from .encodec_wrapper import EncodecWrapper, create_encodec_24khz
@@ -287,13 +287,15 @@ def create_clap_rvq_trainer_from_config(
     clap: ClapQuantized,
     results_folder: str,
     device,
-    accelerate_kwargs: dict = {}
+    accelerate_kwargs: dict = {},
+    config_paths: Optional[List[str]] = None
 ):
     trainer = ClapRVQTrainer(
         audio_conditioner=clap,
         results_folder=results_folder,
         data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         accelerate_kwargs=accelerate_kwargs,
+        config_paths=config_paths,
         **asdict(training_config.clap_rvq_trainer_cfg)
     ).to(device)
 
@@ -305,12 +307,14 @@ def create_hubert_kmeans_trainer_from_config(
     training_config: MusicLMTrainingConfig,
     hubert_kmeans: HfHubertWithKmeans,
     results_folder: str,
-    device
+    device,
+    config_paths: Optional[List[str]] = None
 ):
     trainer = HfHubertKmeansTrainer(
         hubert_kmeans=hubert_kmeans,
         results_folder=results_folder,
         data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
+        config_paths=config_paths,
         **asdict(training_config.hubert_kmeans_trainer_cfg),
     ).to(device)
 
@@ -327,7 +331,8 @@ def create_single_stage_trainer_from_config(
     wav2vec: Optional[HfHubertWithKmeans]=None,
     encodec_wrapper: Optional[EncodecWrapper]=None,
     device='cpu',
-    accelerate_kwargs: dict = {}
+    accelerate_kwargs: dict = {},
+    config_paths: Optional[List[str]] = None
 ) -> SingleStageTrainer:
     
     semantic_audio_length_seconds = model_config.global_cfg.semantic_audio_length_seconds
@@ -352,6 +357,7 @@ def create_single_stage_trainer_from_config(
         results_folder=results_folder,
         data_max_length_seconds=data_max_length_seconds,
         accelerate_kwargs=accelerate_kwargs,
+        config_paths=config_paths,
         **asdict(trainer_cfg)
     ).to(device)
 

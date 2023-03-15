@@ -31,7 +31,7 @@ from .utils import (all_rows_have_eos_id, append_eos_id,
                     batch_unique_consecutive, ceil_div, default,
                     eval_decorator, exists, generate_mask_with_prob,
                     get_embeds, gumbel_sample, mask_out_after_eos_id,
-                    round_down_nearest_multiple, top_k)
+                    round_down_nearest_multiple, top_k, copy_file_to_folder)
 
 # for automatically routing data emitted from a dataset to keywords of the transformer wrappers
 
@@ -127,7 +127,8 @@ class SingleStageTrainer(nn.Module):
         save_reconstructed_wave=True,
         save_model_every=1000,
         results_folder='./results',
-        accelerate_kwargs: dict = {}
+        accelerate_kwargs: dict = {},
+        config_paths: Optional[List[str]] = None,
     ):
         super().__init__()
         kwargs_handler = DistributedDataParallelKwargs(find_unused_parameters=True)
@@ -299,6 +300,12 @@ class SingleStageTrainer(nn.Module):
 
         hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
         self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
+
+        if exists(config_paths):
+            configs_folder = self.results_folder / "configs"
+            configs_folder.mkdir(parents=True, exist_ok=True)
+            for config_path in config_paths:
+                copy_file_to_folder(config_path, configs_folder)
 
     def save(self, model_path, optim_path, scheduler_path=None):
         model_state_dict = self.accelerator.get_state_dict(self.transformer)
@@ -512,6 +519,7 @@ class ClapRVQTrainer(nn.Module):
         save_model_every=1000,
         results_folder='./results',
         accelerate_kwargs: dict = {},
+        config_paths: Optional[List[str]] = None,
     ):
         super().__init__()
         self.accelerator = Accelerator(**accelerate_kwargs)
@@ -579,6 +587,12 @@ class ClapRVQTrainer(nn.Module):
         
         hps = {"num_train_steps": num_train_steps, "batch_size": batch_size, "accumulate_batches": accumulate_batches}
         self.accelerator.init_trackers(f"clap_rvq_{int(time.time() * 1000)}", config=hps)
+
+        if exists(config_paths):
+            configs_folder = self.results_folder / "configs"
+            configs_folder.mkdir(parents=True, exist_ok=True)
+            for config_path in config_paths:
+                copy_file_to_folder(config_path, configs_folder)
 
     def print(self, msg):
         self.accelerator.print(msg)
@@ -676,6 +690,7 @@ class HfHubertKmeansTrainer(nn.Module):
         data_max_length_seconds: Union[float, int] = 1,
         results_folder='./results',
         accelerate_kwargs: dict = {},
+        config_paths: Optional[List[str]] = None,
     ):
         super().__init__()
         self.accelerator = Accelerator(**accelerate_kwargs)
@@ -724,6 +739,12 @@ class HfHubertKmeansTrainer(nn.Module):
             rmtree(str(self.results_folder))
 
         self.results_folder.mkdir(parents=True, exist_ok=True)
+
+        if exists(config_paths):
+            configs_folder = self.results_folder / "configs"
+            configs_folder.mkdir(parents=True, exist_ok=True)
+            for config_path in config_paths:
+                copy_file_to_folder(config_path, configs_folder)
 
     def print(self, msg):
         self.accelerator.print(msg)

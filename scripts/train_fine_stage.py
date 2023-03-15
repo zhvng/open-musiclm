@@ -63,7 +63,8 @@ if __name__ == '__main__':
         accelerate_kwargs={
             'log_with': "tensorboard",
             'logging_dir': './logs/fine'
-        })
+        },
+        config_paths=[args.model_config, args.training_config])
 
     if args.continue_from_dir is not None:
         checkpoints, steps = get_latest_checkpoints(args.continue_from_dir)

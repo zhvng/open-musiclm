@@ -29,7 +29,8 @@ if __name__ == '__main__':
         training_config=training_config,
         hubert_kmeans=hubert_kmeans,
         results_folder=args.results_folder,
-        device=device
+        device=device,
+        config_paths=[args.model_config, args.training_config]
     )
 
     trainer.train()
