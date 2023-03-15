@@ -24,6 +24,8 @@ class ClapRVQConfig:
     rq_num_quantizers: int
     codebook_size: int
     enable_fusion: bool = False
+    rq_ema_decay: float = 0.95
+    threshold_ema_dead_code: float = 0.0
 
 @dataclass
 class HubertKmeansConfig:

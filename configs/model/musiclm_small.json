@@ -9,7 +9,9 @@
     "clap_rvq_cfg": {
         "enable_fusion": false,
         "rq_num_quantizers": 12,
-        "codebook_size": 1024
+        "codebook_size": 1024,
+        "rq_ema_decay": 0.95,
+        "threshold_ema_dead_code": 0.0
     },
     "hubert_kmeans_cfg": {
         "model_name": "m-a-p/MERT-v0",

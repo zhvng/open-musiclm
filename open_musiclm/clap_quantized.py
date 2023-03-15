@@ -23,6 +23,7 @@ class ClapQuantized(nn.Module):
                  rq_num_quantizers: int = 12,
                  rq_ema_decay: float = 0.95,
                  learn_rvq: bool = False,
+                 threshold_ema_dead_code: float = 0.0,
                  ):
         super().__init__()
 
@@ -42,7 +43,7 @@ class ClapQuantized(nn.Module):
             commitment_weight=0,  # embeddings are frozen so no need for commitment loss
             decay=rq_ema_decay,
             kmeans_init=True,
-            threshold_ema_dead_code=0,
+            threshold_ema_dead_code=threshold_ema_dead_code,
         )
 
     def forward(self,
