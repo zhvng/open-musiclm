@@ -23,3 +23,6 @@ dependencies:
     - accelerate>=0.17.0
     - beartype
     - joblib
+    - h5py
+    - sklearn
+    - wget
