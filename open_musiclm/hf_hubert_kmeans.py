@@ -19,7 +19,7 @@ logging.root.setLevel(logging.ERROR)
 class HfHubertWithKmeans(nn.Module):
     """
     Hugging Face HubertModel + a k-means layer on top. Pretrained checkpoint for music: https://huggingface.co/m-a-p/MERT-v0
-    Note: Hubert outputs features at 50Hz while Wav2Vec-BERT (used in the paper) outputs at 25 Hz. Although Hubert embeddings should be better, it will have longer sequence lengths.
+    Note: Hubert outputs features at 50Hz while Wav2Vec-BERT (used in the paper) outputs at 25 Hz.
     """
 
     def __init__(
