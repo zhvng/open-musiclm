@@ -301,7 +301,7 @@ class SingleStageTrainer(nn.Module):
         hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
         self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
 
-        if exists(config_paths):
+        if self.is_main and exists(config_paths):
             configs_folder = self.results_folder / "configs"
             configs_folder.mkdir(parents=True, exist_ok=True)
             for config_path in config_paths:
@@ -408,6 +408,7 @@ class SingleStageTrainer(nn.Module):
         # sample results every so often
 
         valid_loss = None
+        valid_accuracy = None
         if not (steps % self.save_results_every):
             non_empty_batch = False
             while non_empty_batch is False:
@@ -421,17 +422,21 @@ class SingleStageTrainer(nn.Module):
                     self.train_wrapper.eval()
                     valid_loss, all_logits, all_labels = self.accelerator.unwrap_model(self.train_wrapper)(**data_kwargs, return_loss=True)
 
-                valid_loss = self.accelerator.reduce(valid_loss, 'mean')
+                valid_loss = self.accelerator.reduce(valid_loss, 'mean').item()
 
-                self.print(f'{steps}: valid loss {valid_loss}')
+                pred_tokens = self.accelerator.gather_for_metrics(all_logits[-1].argmax(1).contiguous())
+                gt_tokens = self.accelerator.gather_for_metrics(all_labels[-1].contiguous())
+
+                pred_tokens = pred_tokens.detach().cpu().long()
+                gt_tokens = gt_tokens.detach().cpu().long()
+
+                valid_accuracy = (pred_tokens == gt_tokens).float().mean().item()
+                self.print(f'{steps}: valid loss {valid_loss}, valid acc {valid_accuracy}')
 
                 if self.is_main and self.save_predicted_tokens:
                     # interleave pred_tokens and gt_tokens and save to a text file
 
                     assert exists(self.tokens_folder)
-
-                    pred_tokens = all_logits[-1].detach().cpu().argmax(1).long()
-                    gt_tokens = all_labels[-1].detach().cpu().long()
 
                     interleave = torch.empty((pred_tokens.shape[0] + gt_tokens.shape[0], pred_tokens.shape[1]), dtype=pred_tokens.dtype)
                     interleave[0::2] = pred_tokens
@@ -462,7 +467,11 @@ class SingleStageTrainer(nn.Module):
                     for i, wave in enumerate(waves):
                         torchaudio.save(str(self.waves_folder / f'{self.stage}.reconstructed_wave_{i}.{steps}.wav'), wave, self.neural_codec.sample_rate)
 
-        self.accelerator.log({"train_loss": logs['loss'], "valid_loss": valid_loss}, step=steps)
+        self.accelerator.log({
+            "train_loss": logs['loss'],
+            "valid_loss": valid_loss,
+            "valid_accuracy": valid_accuracy
+        }, step=steps)
 
         # save model every so often
 
@@ -588,7 +597,7 @@ class ClapRVQTrainer(nn.Module):
         hps = {"num_train_steps": num_train_steps, "batch_size": batch_size, "accumulate_batches": accumulate_batches}
         self.accelerator.init_trackers(f"clap_rvq_{int(time.time() * 1000)}", config=hps)
 
-        if exists(config_paths):
+        if self.is_main and exists(config_paths):
             configs_folder = self.results_folder / "configs"
             configs_folder.mkdir(parents=True, exist_ok=True)
             for config_path in config_paths:
@@ -740,7 +749,7 @@ class HfHubertKmeansTrainer(nn.Module):
 
         self.results_folder.mkdir(parents=True, exist_ok=True)
 
-        if exists(config_paths):
+        if self.is_main and exists(config_paths):
             configs_folder = self.results_folder / "configs"
             configs_folder.mkdir(parents=True, exist_ok=True)
             for config_path in config_paths:
