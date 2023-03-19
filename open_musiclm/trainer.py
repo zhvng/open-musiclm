@@ -803,6 +803,10 @@ class HfHubertKmeansTrainer(nn.Module):
 
         self.print('step 2: training kmeans')
         if self.is_main:
-            learn_kmeans(features, seed, str(self.results_folder / 'kmeans.joblib'), n_clusters=self.hubert_kmeans.codebook_size)
+            learn_kmeans(
+                features,
+                seed,
+                str(self.results_folder / 'kmeans.joblib'),
+                n_clusters=self.accelerator.unwrap_model(self.hubert_kmeans).codebook_size)
 
         self.print('training complete')
