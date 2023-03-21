@@ -19,7 +19,7 @@ logging.root.setLevel(logging.ERROR)
 class HfHubertWithKmeans(nn.Module):
     """
     Hugging Face HubertModel + a k-means layer on top. Pretrained checkpoint for music: https://huggingface.co/m-a-p/MERT-v0
-    Note: Hubert outputs features at 50Hz while Wav2Vec-BERT (used in the paper) outputs at 25 Hz.
+    Note: MERT-v0 outputs features at 50Hz while Wav2Vec-BERT (used in the paper) outputs at 25 Hz.
     """
 
     def __init__(
@@ -31,10 +31,12 @@ class HfHubertWithKmeans(nn.Module):
         target_sample_hz=16000,
         seq_len_multiple_of=int(16000 / 50),
         normalize_embeds=True,
-        codebook_size: int=1024
+        codebook_size: int=1024,
+        output_hz: int=50
     ):
         super().__init__()
         self.target_sample_hz = target_sample_hz
+        self.output_hz = output_hz
         self.seq_len_multiple_of = seq_len_multiple_of
         self.codebook_size = kmeans.n_clusters if exists(kmeans) else None
 

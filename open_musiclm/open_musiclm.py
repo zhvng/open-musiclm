@@ -860,7 +860,7 @@ class MusicLM(nn.Module):
         semantic_window_seconds=8,
         coarse_window_seconds=4,
         fine_window_seconds=2,
-        semantic_steps_per_second=50, # Note: for Hubert its actually 50 * seconds - 1
+        semantic_steps_per_second=50, # Note: for MERTv0 its actually 50 * seconds - 1
         acoustic_steps_per_second=75, # 75 for encodec, 50 for soundstream
         return_coarse_generated_wave=False,
         mask_out_generated_fine_tokens=False,
@@ -914,14 +914,14 @@ class MusicLM(nn.Module):
             return wave
 
         # crop to fine window length and iterate 
-        all_coarse_token_ids = torch.split(all_coarse_token_ids, fine_window_seconds * acoustic_steps_per_second, dim=1)
+        all_coarse_token_ids = torch.split(all_coarse_token_ids, int(fine_window_seconds * acoustic_steps_per_second), dim=1)
 
         generated_waves = []
         for coarse_token_ids in all_coarse_token_ids:
             generated_wave = self.fine.generate(
                 clap_token_ids=clap_token_ids,
                 coarse_token_ids=coarse_token_ids,
-                max_time_steps=fine_window_seconds * acoustic_steps_per_second,
+                max_time_steps=int(fine_window_seconds * acoustic_steps_per_second),
                 reconstruct_wave=True,
                 include_eos_in_output=False,
                 append_eos_to_conditioning_tokens=True,

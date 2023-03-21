@@ -83,6 +83,8 @@ if __name__ == '__main__':
             semantic_window_seconds=model_config.global_cfg.semantic_audio_length_seconds, 
             coarse_window_seconds=model_config.global_cfg.coarse_audio_length_seconds, 
             fine_window_seconds=model_config.global_cfg.fine_audio_length_seconds, 
+            semantic_steps_per_second=model_config.hubert_kmeans_cfg.output_hz,
+            acoustic_steps_per_second=model_config.encodec_cfg.output_hz,
             return_coarse_generated_wave=return_coarse_wave,
         ).detach().cpu()
 

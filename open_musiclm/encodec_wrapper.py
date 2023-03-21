@@ -14,11 +14,13 @@ class EncodecWrapper(nn.Module):
     def __init__(self,
                  *,
                  encodec: EncodecModel,
+                 output_hz: int = 75,
                  ):
         super().__init__()
 
         self.encodec = encodec
         self.sample_rate = encodec.sample_rate
+        self.output_hz = output_hz
 
         assert exists(encodec.bandwidth)
         total_quantizers = encodec.quantizer.n_q
@@ -52,7 +54,7 @@ class EncodecWrapper(nn.Module):
             wave = self.encodec.decode(frames)
         return wave
 
-def create_encodec_24khz(bandwidth: float = 6.0, codebook_size: int = 1024):
+def create_encodec_24khz(bandwidth: float = 6.0, codebook_size: int = 1024, **kwargs):
     """
     Create a pretrained EnCodec model.
     Args:
@@ -61,7 +63,7 @@ def create_encodec_24khz(bandwidth: float = 6.0, codebook_size: int = 1024):
 
     encodec = EncodecModel.encodec_model_24khz()
     encodec.set_target_bandwidth(bandwidth)
-    encodec_wrapper = EncodecWrapper(encodec=encodec)
+    encodec_wrapper = EncodecWrapper(encodec=encodec, **kwargs)
 
     assert encodec_wrapper.codebook_size == codebook_size, "encodec codebook size must be 1024 for now"
 

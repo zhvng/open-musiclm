@@ -35,11 +35,13 @@ class HubertKmeansConfig:
     target_sample_hz: int = 16000
     seq_len_multiple_of: int = 320
     codebook_size: int = 1024
+    output_hz: int = 50
 
 @dataclass
 class EncodecConfig:
     bandwidth: float
     codebook_size: int
+    output_hz: int = 75
 
 RelativePositionBiasType = Literal['continuous', 't5']
 
@@ -186,7 +188,7 @@ def load_model(model, path):
     path = Path(path)
     assert path.exists(), f'checkpoint does not exist at {str(path)}'
     pkg = torch.load(str(path))
-    model.load_state_dict(pkg)
+    model.load_state_dict(pkg, strict=False)
 
 class disable_print:
     def __enter__(self):

@@ -94,7 +94,7 @@ class CLAP_Module(torch.nn.Module):
             max_length=77,
             return_tensors="pt",
         )
-        return {k: v.squeeze(0) for k, v in result.items()}
+        return result
 
     def load_ckpt(self, ckpt = None, model_id = -1):
         """Load the pretrained checkpoint of CLAP model

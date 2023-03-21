@@ -19,11 +19,13 @@
         "embed_layer": 7,
         "target_sample_hz": 16000,
         "seq_len_multiple_of": 320,
-        "codebook_size": 1024
+        "codebook_size": 1024,
+        "output_hz": 50
     },
     "encodec_cfg": {
         "bandwidth": 6.0,
-        "codebook_size": 1024
+        "codebook_size": 1024,
+        "output_hz": 75
     },
     "semantic_cfg": {
         "dim": 1024,
