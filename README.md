@@ -133,6 +133,8 @@ python scripts/infer.py \
 You can use the `--return_coarse_wave` flag to skip the fine stage and reconstruct audio from coarse tokens alone.
 
 # Thank you
+* [Okio](https://okio.ai/) for providing compute to train the model! Okio is a startup that is developing Nendo - an open source generative music tool-suite
+that re-imagines music. If you're interested check them out at [okio.ai](https://okio.ai/)
 * [@lucidrains](https://github.com/lucidrains/) for the [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch) implementation. This repo contains a refactored version of a lot of the code in [audiolm-pytorch](https://github.com/lucidrains/audiolm-pytorch).
 * [LAION](https://laion.ai/) for [CLAP](https://github.com/LAION-AI/CLAP)
 * [Music Audio Pretrain team](https://huggingface.co/m-a-p) for [MERT](https://huggingface.co/m-a-p/MERT-v0)
