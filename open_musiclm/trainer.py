@@ -33,6 +33,11 @@ from .utils import (all_rows_have_eos_id, append_eos_id,
                     get_embeds, gumbel_sample, mask_out_after_eos_id,
                     round_down_nearest_multiple, top_k, copy_file_to_folder)
 
+try:
+    import wandb
+except ModuleNotFoundError:
+    wandb = None
+
 # for automatically routing data emitted from a dataset to keywords of the transformer wrappers
 
 DATASET_FIELD_TYPE_CONFIG = dict(
@@ -133,6 +138,8 @@ class SingleStageTrainer(nn.Module):
         super().__init__()
         kwargs_handler = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = Accelerator(**accelerate_kwargs, kwargs_handlers=[kwargs_handler])
+
+        self.log_with = accelerate_kwargs['log_with'] if 'log_with' in accelerate_kwargs else None
 
         self.use_preprocessed_data = use_preprocessed_data
 
@@ -299,7 +306,11 @@ class SingleStageTrainer(nn.Module):
             self.tokens_folder.mkdir(parents=True, exist_ok=True)
 
         hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
-        self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
+
+        if 'tensorboard' in self.log_with:
+            self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
+        else:
+            self.accelerator.init_trackers(f"{stage}_stage", config=hps)
 
         if self.is_main and exists(config_paths):
             configs_folder = self.results_folder / "configs"
@@ -464,8 +475,21 @@ class SingleStageTrainer(nn.Module):
                     
                     waves = self.neural_codec.decode_from_codebook_indices(pred_tokens)
                     waves = waves.cpu()
+
+                    file_paths = []
+
+                    max_files_to_save = 4
                     for i, wave in enumerate(waves):
-                        torchaudio.save(str(self.waves_folder / f'{self.stage}.reconstructed_wave_{i}.{steps}.wav'), wave, self.neural_codec.sample_rate)
+                        if i < max_files_to_save:
+                            file_path = str(self.waves_folder / f'{self.stage}.reconstructed_wave_{i}.{steps}.wav')
+                            torchaudio.save(file_path, wave, self.neural_codec.sample_rate)
+                            file_paths.append(file_path)
+                        else:
+                            break
+
+                    if 'wandb' in self.log_with and exists(wandb):
+                        audios = [wandb.Audio(file_path, caption=f'reconstructed wave at {steps} steps') for file_path in file_paths]
+                        wandb.log({'reconstructed_wave': audios})
 
         self.accelerator.log({
             "train_loss": logs['loss'],
@@ -595,7 +619,11 @@ class ClapRVQTrainer(nn.Module):
         self.results_folder.mkdir(parents=True, exist_ok=True)
         
         hps = {"num_train_steps": num_train_steps, "batch_size": batch_size, "accumulate_batches": accumulate_batches}
-        self.accelerator.init_trackers(f"clap_rvq_{int(time.time() * 1000)}", config=hps)
+
+        if 'tensorboard' in self.log_with:
+            self.accelerator.init_trackers(f"clap_rvq_{int(time.time() * 1000)}", config=hps)
+        else: 
+            self.accelerator.init_trackers(f"clap_rvq", config=hps)
 
         if self.is_main and exists(config_paths):
             configs_folder = self.results_folder / "configs"

@@ -5,6 +5,7 @@ results/
 test.wav
 logs/
 .vscode
+wandb
 
 **/630k-*.pt
 
