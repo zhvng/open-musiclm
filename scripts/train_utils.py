@@ -12,28 +12,29 @@ class disable_print:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
-def get_latest_checkpoints(results_folder):
+def get_latest_checkpoints(results_folder, max_step=None):
     highest_transformer_step = -1
     highest_optimizer_step = -1
     highest_scheduler_step = -1
     transformer_path = None
     optimizer_path = None
     scheduler_path = None
+    max_step = float('inf') if max_step is None else max_step
     for file in os.listdir(results_folder):
         if file.endswith('.pt'):
             if 'transformer' in file:
                 step = int(file.split('.')[2])
-                if step > highest_transformer_step:
+                if step > highest_transformer_step and step <= max_step:
                     highest_transformer_step = step
                     transformer_path = os.path.join(results_folder, file)
             elif 'optimizer' in file:
                 step = int(file.split('.')[2])
-                if step > highest_optimizer_step:
+                if step > highest_optimizer_step and step <= max_step:
                     highest_optimizer_step = step
                     optimizer_path = os.path.join(results_folder, file)
             elif 'scheduler' in file:
                 step = int(file.split('.')[2])
-                if step > highest_scheduler_step:
+                if step > highest_scheduler_step and step <= max_step:
                     highest_scheduler_step = step
                     scheduler_path = os.path.join(results_folder, file)
 

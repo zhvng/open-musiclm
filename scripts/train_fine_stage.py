@@ -19,6 +19,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train fine stage')
     parser.add_argument('--results_folder', default='./results/fine')
     parser.add_argument('--continue_from_dir', default=None, type=str)
+    parser.add_argument('--continue_from_step', default=None, type=int)
     parser.add_argument('--model_config', default='./configs/model/musiclm_small.json')
     parser.add_argument('--training_config', default='./configs/training/train_musiclm_fma.json')
     parser.add_argument('--rvq_path', default='./checkpoints/clap.rvq.350.pt')
@@ -67,7 +68,7 @@ if __name__ == '__main__':
         config_paths=[args.model_config, args.training_config])
 
     if args.continue_from_dir is not None:
-        checkpoints, steps = get_latest_checkpoints(args.continue_from_dir)
+        checkpoints, steps = get_latest_checkpoints(args.continue_from_dir, args.continue_from_step)
         print(f'loading checkpoints: {checkpoints}')
         trainer.load(*checkpoints, steps=steps+1)
 
