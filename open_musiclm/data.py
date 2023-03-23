@@ -96,7 +96,6 @@ class SoundDataset(Dataset):
         # e.g. if max_length_seconds = (10, 4), pick a 10 second crop from the original, then pick a 4 second crop from the 10 second crop
         # also use normalized data when specified 
 
-        audio_length = data.size(1)
         temp_data = data
         temp_data_normalized = zero_mean_unit_var_norm(data)
 
@@ -110,6 +109,7 @@ class SoundDataset(Dataset):
         for unsorted_i, max_length_seconds in sorted_max_length_seconds: 
 
             if exists(max_length_seconds):
+                audio_length = temp_data.size(1)
                 target_length = int(max_length_seconds * sample_hz)
 
                 if audio_length > target_length:
