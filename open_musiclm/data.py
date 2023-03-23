@@ -15,7 +15,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torchaudio.functional import resample
 
-from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16, zero_mean_unit_var_norm
+from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16, zero_mean_unit_var_norm, default
 
 # helper functions
 
@@ -37,7 +37,7 @@ class SoundDataset(Dataset):
         self,
         folder,
         exts = ['flac', 'wav', 'mp3'],
-        max_length_seconds: Union[FloatOrInt, Tuple[FloatOrInt, ...]] = 1,
+        max_length_seconds: Optional[Union[FloatOrInt, Tuple[Optional[FloatOrInt], ...]]] = 1,
         normalize: Union[bool, Tuple[bool, ...]] = False,
         target_sample_hz: OptionalIntOrTupleInt = None,
         seq_len_multiple_of: OptionalIntOrTupleInt = None,
@@ -49,6 +49,7 @@ class SoundDataset(Dataset):
         assert path.exists(), 'folder does not exist'
 
         files = []
+        ignore_files = default(ignore_files, [])
         for ext in exts:
             for file in path.glob(f'**/*.{ext}'):
                 if any(ignore_file in str(file) for ignore_file in ignore_files):
@@ -65,7 +66,7 @@ class SoundDataset(Dataset):
         num_outputs = len(self.target_sample_hz)
 
         self.max_length_seconds = cast_tuple(max_length_seconds, num_outputs)
-        self.max_length = tuple([int(s * hz) for s, hz in zip(self.max_length_seconds, self.target_sample_hz)])
+        self.max_length = tuple([int(s * hz) if exists(s) else None for s, hz in zip(self.max_length_seconds, self.target_sample_hz)])
 
         self.normalize = cast_tuple(normalize, num_outputs)
 
@@ -93,28 +94,33 @@ class SoundDataset(Dataset):
 
         # recursively crop the audio at random in the order of longest to shortest max_length_seconds, padding when necessary.
         # e.g. if max_length_seconds = (10, 4), pick a 10 second crop from the original, then pick a 4 second crop from the 10 second crop
-        # also use normalized data for when 
+        # also use normalized data when specified 
 
+        audio_length = data.size(1)
         temp_data = data
         temp_data_normalized = zero_mean_unit_var_norm(data)
 
         num_outputs = len(self.target_sample_hz)
         data = [None for _ in range(num_outputs)]
 
-        sorted_max_length_seconds = sorted(enumerate(self.max_length_seconds), key=lambda t: t[1])
+        sorted_max_length_seconds = sorted(
+            enumerate(self.max_length_seconds), 
+            key=lambda t: (t[1] is not None, t[1])) # sort by max_length_seconds, while moving None to the beginning
+
         for unsorted_i, max_length_seconds in sorted_max_length_seconds: 
-            audio_length = temp_data.size(1)
-            target_length = int(max_length_seconds * sample_hz)
 
-            if audio_length > target_length:
-                max_start = audio_length - target_length
-                start = torch.randint(0, max_start, (1, ))
+            if exists(max_length_seconds):
+                target_length = int(max_length_seconds * sample_hz)
 
-                temp_data = temp_data[:, start:start + target_length]
-                temp_data_normalized = temp_data_normalized[:, start:start + target_length]
-            else:
-                temp_data = F.pad(temp_data, (0, target_length - audio_length), 'constant')
-                temp_data_normalized = F.pad(temp_data_normalized, (0, target_length - audio_length), 'constant')
+                if audio_length > target_length:
+                    max_start = audio_length - target_length
+                    start = torch.randint(0, max_start, (1, ))
+
+                    temp_data = temp_data[:, start:start + target_length]
+                    temp_data_normalized = temp_data_normalized[:, start:start + target_length]
+                else:
+                    temp_data = F.pad(temp_data, (0, target_length - audio_length), 'constant')
+                    temp_data_normalized = F.pad(temp_data_normalized, (0, target_length - audio_length), 'constant')
 
             data[unsorted_i] = temp_data_normalized if self.normalize[unsorted_i] else temp_data
 
@@ -130,7 +136,8 @@ class SoundDataset(Dataset):
         for data, max_length, seq_len_multiple_of in zip(data_tuple, self.max_length, self.seq_len_multiple_of):
             audio_length = data.size(1)
 
-            assert audio_length == max_length, f'audio length {audio_length} does not match max_length {max_length}.'
+            if exists(max_length):
+                assert audio_length == max_length, f'audio length {audio_length} does not match max_length {max_length}.'
 
             data = rearrange(data, '1 ... -> ...')
 
@@ -190,6 +197,35 @@ def pad_to_longest_fn(data):
 
 def get_dataloader(ds, pad_to_longest = True, **kwargs):
     collate_fn = pad_to_longest_fn if pad_to_longest else curtail_to_shortest_collate
+    return DataLoader(ds, collate_fn = collate_fn, **kwargs)
+
+# dataloader to return data with mask (for variable length sequences)
+
+@collate_one_or_multiple_tensors
+def masked_pad_to_longest_fn(data):
+    lengths = torch.tensor([t.shape[0] for t in data])
+    data = torch.nn.utils.rnn.pad_sequence(data, batch_first=True)
+
+    mask = torch.zeros_like(data, dtype=torch.bool)
+    for i, l in enumerate(lengths):
+        mask[i, :l] = True
+
+    return {
+        'input_values': data,
+        'attention_mask': mask
+    }
+
+def get_masked_dataloader(ds, **kwargs):
+    """
+    pad to longest and return mask
+
+    format: tuple({
+        'input_values': torch.tensor,
+        'attention_mask': torch.tensor
+    })
+    
+    """
+    collate_fn = masked_pad_to_longest_fn
     return DataLoader(ds, collate_fn = collate_fn, **kwargs)
 
 
