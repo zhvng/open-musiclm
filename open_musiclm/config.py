@@ -134,12 +134,9 @@ class SingleStageTrainerConfig:
 
 @dataclass
 class DataPreprocessorConfig:
-    num_shards: int = 4
-    batches_per_shard: int = 500
-    batch_size: int = 64
     folder: str = './data/fma_large'
     results_folder: str = './fma_preprocessed'
-    valid_frac: float = 0.05
+    clap_batch_size: int = 32
 
 @beartype
 @dataclass
@@ -372,8 +369,8 @@ def create_data_preprocessor_from_config(
     clap: ClapQuantized,
     wav2vec: HfHubertWithKmeans,
     encodec_wrapper: EncodecWrapper,
-    stage='all',
-    device='cpu'
+    device='cpu',
+    config_paths: Optional[List[str]] = None
 ):
     data_preprocessor = DataPreprocessor(
         audio_conditioner=clap,
@@ -382,7 +379,7 @@ def create_data_preprocessor_from_config(
         semantic_audio_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         coarse_audio_length_seconds=model_config.global_cfg.coarse_audio_length_seconds,
         fine_audio_length_seconds=model_config.global_cfg.fine_audio_length_seconds,
-        stage=stage,
+        config_paths=config_paths,
         **asdict(training_config.data_preprocessor_cfg)
     ).to(device)
 

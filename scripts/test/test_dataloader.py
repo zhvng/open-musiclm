@@ -11,7 +11,7 @@ import numpy as np
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from open_musiclm.data import SoundDataset, get_dataloader, get_masked_dataloader
+from open_musiclm.data import SoundDataset, SoundDatasetForPreprocessing, get_dataloader, get_sound_preprocessing_dataloader
 
 
 folder = './data/fma_large/000'
@@ -37,9 +37,9 @@ for i in range(test_steps):
     for e in batch:
         print(e.shape)
 
-# test masked
+# test preprocessing
 
-dataset = SoundDataset(
+dataset = SoundDatasetForPreprocessing(
     folder,
     max_length_seconds=(None, 1),
     normalize=(True, False),
@@ -48,14 +48,10 @@ dataset = SoundDataset(
     ignore_load_errors=True
 )
 
-dl = get_masked_dataloader(dataset, batch_size=4, shuffle=False)
+dl = get_sound_preprocessing_dataloader(dataset, shuffle=False)
 dl_iter = iter(dl)
 
 test_steps = 2
 for i in range(test_steps):
     batch = next(dl_iter)
-    # print(batch)
-    for d in batch:
-        for key in d.keys():
-            print(key, d[key].shape)
-
+    print(batch)

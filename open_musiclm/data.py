@@ -87,6 +87,10 @@ class SoundDataset(Dataset):
                 return self[torch.randint(0, len(self), (1,)).item()]
             else:
                 raise Exception(f'error loading file {file}')
+            
+        return self.process_audio(data, sample_hz)
+
+    def process_audio(self, data, sample_hz):
 
         if data.shape[0] > 1:
             # the audio has more than 1 channel, convert to mono
@@ -199,34 +203,55 @@ def get_dataloader(ds, pad_to_longest = True, **kwargs):
     collate_fn = pad_to_longest_fn if pad_to_longest else curtail_to_shortest_collate
     return DataLoader(ds, collate_fn = collate_fn, **kwargs)
 
-# dataloader to return data with mask (for variable length sequences)
 
-@collate_one_or_multiple_tensors
-def masked_pad_to_longest_fn(data):
-    lengths = torch.tensor([t.shape[0] for t in data])
-    data = torch.nn.utils.rnn.pad_sequence(data, batch_first=True)
+@beartype
+class SoundDatasetForPreprocessing(SoundDataset):
+    def __init__(
+        self,
+        folder,
+        **kwargs
+    ):
+        super().__init__(folder=folder, **kwargs)
 
-    mask = torch.zeros_like(data, dtype=torch.bool)
-    for i, l in enumerate(lengths):
-        mask[i, :l] = True
+    def __getitem__(self, idx):
+        """
+        override getitem to return data + audio file name, and None in the case of a load error.
+        intended to work with batch_size = 1 (for now). will likely be i/o limited anyways.
+        """
+        try:
+            file = self.files[idx]
+            data, sample_hz = torchaudio.load(file)
+        except:
+            if self.ignore_load_errors:
+                return {
+                    'idx': idx,
+                    'data': None,
+                    'file_path': str(file),
+                }
+            else:
+                raise Exception(f'error loading file {file}')
 
-    return {
-        'input_values': data,
-        'attention_mask': mask
-    }
+        # if audio length is less than 10 seconds, pad to 10 seconds
+        # else pad audio to nearest second
+        # this is so at least one semantic token sequence can be extracted from the audio
+        # TODO: support longer context
+        if data.size(1) < 10 * sample_hz:
+            data = F.pad(data, (0, 10 * sample_hz - data.size(1)), 'constant', value=0)
+        else:
+            data = F.pad(data, (0, sample_hz - data.size(1) % sample_hz), 'constant', value=0)
 
-def get_masked_dataloader(ds, **kwargs):
-    """
-    pad to longest and return mask
+        data = self.process_audio(data, sample_hz)
 
-    format: tuple({
-        'input_values': torch.tensor,
-        'attention_mask': torch.tensor
-    })
-    
-    """
-    collate_fn = masked_pad_to_longest_fn
-    return DataLoader(ds, collate_fn = collate_fn, **kwargs)
+        return {
+            'idx': idx,
+            'data': data,
+            'file_path': str(file)
+        }
+
+def get_sound_preprocessing_dataloader(ds, **kwargs):
+    assert kwargs.get('batch_size', 1) == 1, 'batch_size must be 1 for preprocessing'
+    kwargs.setdefault('batch_size', 1)
+    return DataLoader(ds, **kwargs)
 
 
 @beartype

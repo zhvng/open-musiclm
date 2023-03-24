@@ -59,7 +59,7 @@ class ClapQuantized(nn.Module):
 
         assert exists(audio_input) ^ exists(text_input), "either audio or text must be provided, but not both"
         if exists(audio_input):
-            assert all(wave.dim() == 1 for wave in audio_input)
+            assert all(wave.dim() == 1 for wave in audio_input), f"audio_input must be a list of 1D tensors, but got {audio_input[0].shape}"
 
         with torch.no_grad():
             self.clap.eval()
