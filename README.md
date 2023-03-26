@@ -94,13 +94,11 @@ To do this, fill in the `data_preprocessor_cfg` field in the config and set `use
 
 ```shell
 python ./scripts/preprocess_data.py \
-    --stage all # stage(s) we want to preprocess for: all | semantic | coarse | fine
     --model_config ./configs/model/musiclm_small.json \
     --training_config ./configs/training/train_fma_preprocess.json \
     --rvq_path PATH_TO_RVQ_CHECKPOINT \ # path to previously trained rvq
     --kmeans_path PATH_TO_KMEANS_CHECKPOINT # path to previously trained kmeans
 ```
-Note: make sure to process enough data for the number of training steps you're planning to run. Once the trainer runs out of data it cycles back to the beginning, but there is no random cropping in this case so the samples will be repeated.
 
 ## Inference
 Generate multiple samples and use CLAP to select the best ones:
