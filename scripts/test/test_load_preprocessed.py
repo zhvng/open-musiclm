@@ -22,6 +22,8 @@ sqlite3.register_converter("array", convert_array)
 
 conn = sqlite3.connect('./data/fma_preprocessed/preprocessed.db', detect_types=sqlite3.PARSE_DECLTYPES)
 cursor = conn.cursor()
+cursor.execute("SELECT idx, path FROM tokens WHERE idx=?", (0,))
+print(cursor.fetchone())
 
 for i in [3,-1]:
     cursor.execute("SELECT clap, semantic, coarse FROM tokens WHERE idx=?", (i,))

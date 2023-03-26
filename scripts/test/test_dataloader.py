@@ -14,47 +14,47 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from open_musiclm.data import SoundDataset, SoundDatasetForPreprocessing, PreprocessedDataset, get_dataloader, get_sound_preprocessing_dataloader, get_preprocessed_dataloader
 
 
-# folder = './data/fma_large/000'
+folder = './data/fma_large/000'
 
-# # test random crop
+# test random crop
 
-# dataset = SoundDataset(
-#     folder,
-#     max_length_seconds=(1, 5),
-#     normalize=(True, False),
-#     target_sample_hz=(16000, 24000),
-#     seq_len_multiple_of=None,
-#     ignore_load_errors=True
-# )
+dataset = SoundDataset(
+    folder,
+    max_length_seconds=(1, 5),
+    normalize=(True, False),
+    target_sample_hz=(16000, 24000),
+    seq_len_multiple_of=None,
+    ignore_load_errors=True
+)
 
-# dl = get_dataloader(dataset, batch_size=4, shuffle=False)
-# dl_iter = iter(dl)
+dl = get_dataloader(dataset, batch_size=4, shuffle=False)
+dl_iter = iter(dl)
 
-# test_steps = 2
-# for i in range(test_steps):
-#     batch = next(dl_iter)
-#     # print(batch)
-#     for e in batch:
-#         print(e.shape)
+test_steps = 2
+for i in range(test_steps):
+    batch = next(dl_iter)
+    # print(batch)
+    for e in batch:
+        print(e.shape)
 
-# # test preprocessing
+# test preprocessing
 
-# dataset = SoundDatasetForPreprocessing(
-#     folder,
-#     max_length_seconds=(None, 1),
-#     normalize=(True, False),
-#     target_sample_hz=(16000, 24000),
-#     seq_len_multiple_of=None,
-#     ignore_load_errors=True
-# )
+dataset = SoundDatasetForPreprocessing(
+    folder,
+    max_length_seconds=(None, 1),
+    normalize=(True, False),
+    target_sample_hz=(16000, 24000),
+    seq_len_multiple_of=None,
+    ignore_load_errors=True
+)
 
-# dl = get_sound_preprocessing_dataloader(dataset, shuffle=False)
-# dl_iter = iter(dl)
+dl = get_sound_preprocessing_dataloader(dataset, shuffle=False)
+dl_iter = iter(dl)
 
-# test_steps = 2
-# for i in range(test_steps):
-#     batch = next(dl_iter)
-#     print(batch)
+test_steps = 2
+for i in range(test_steps):
+    batch = next(dl_iter)
+    print(batch)
 
 # # test preprocessed
 dataset = PreprocessedDataset(
@@ -75,4 +75,3 @@ for i in range(test_steps):
     batch = next(dl_iter)
     for d in batch:
         print(d.shape)
-

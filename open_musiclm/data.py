@@ -253,11 +253,7 @@ class SoundDatasetForPreprocessing(SoundDataset):
             data, sample_hz = torchaudio.load(file)
         except:
             if self.ignore_load_errors:
-                return {
-                    'idx': idx,
-                    'data': None,
-                    'file_path': str(file),
-                }
+                return None
             else:
                 raise Exception(f'error loading file {file}')
 
@@ -278,10 +274,16 @@ class SoundDatasetForPreprocessing(SoundDataset):
             'file_path': str(file)
         }
 
+def sound_preprocessing_collate_fn(data):
+    data = list(filter(lambda x: x is not None, data))
+    if len(data) == 0:
+        return None
+    return torch.utils.data.dataloader.default_collate(data)
+
 def get_sound_preprocessing_dataloader(ds, **kwargs):
     assert kwargs.get('batch_size', 1) == 1, 'batch_size must be 1 for preprocessing'
     kwargs.setdefault('batch_size', 1)
-    return DataLoader(ds, **kwargs)
+    return DataLoader(ds, collate_fn=sound_preprocessing_collate_fn, **kwargs)
 
 @beartype
 class PreprocessedDataset(Dataset):

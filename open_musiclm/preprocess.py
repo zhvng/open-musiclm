@@ -243,12 +243,13 @@ class DataPreprocessor(nn.Module):
 
     def process(self, log_fn=noop):
 
-        for inputs in tqdm(self.dl_iter, desc='processing data'):
+        for inputs in tqdm(self.dl_iter, desc='processing data', mininterval=5):
 
-            if exists(inputs['data']):
-
+            if exists(inputs):
+                idx = inputs['idx'].item()
+                
                 if not self.replace_existing:
-                    self.cursor.execute("SELECT * FROM tokens WHERE idx=?", (inputs['idx'].item(),))
+                    self.cursor.execute("SELECT * FROM tokens WHERE idx=?", (idx,))
                     if len(self.cursor.fetchall()) > 0:
                         continue
 
@@ -261,7 +262,7 @@ class DataPreprocessor(nn.Module):
                 fine_token_ids = fine_token_ids.detach().cpu().numpy()
 
                 # add tokens to sqlite db
-                self.cursor.execute("INSERT INTO tokens VALUES (?, ?, ?, ?, ?)", (inputs['idx'].item(), clap_token_ids, semantic_token_ids, coarse_token_ids, fine_token_ids))
+                self.cursor.execute("INSERT INTO tokens VALUES (?, ?, ?, ?, ?, ?)", (idx, inputs['file_path'][0], clap_token_ids, semantic_token_ids, coarse_token_ids, fine_token_ids))
                 self.conn.commit()
 
             self.steps += 1
