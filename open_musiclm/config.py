@@ -349,6 +349,8 @@ def create_single_stage_trainer_from_config(
         data_max_length_seconds = (semantic_audio_length_seconds, fine_audio_length_seconds)
     
     trainer = SingleStageTrainer(
+        model_config=model_config,
+        training_config=training_config,
         transformer=transformer,
         audio_conditioner=clap,
         wav2vec=wav2vec,

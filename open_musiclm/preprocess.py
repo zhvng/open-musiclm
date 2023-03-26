@@ -1,7 +1,6 @@
 import io
 import itertools
 import math
-import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +24,8 @@ from typing_extensions import Annotated
 
 from .clap_quantized import ClapQuantized
 from .data import (SoundDatasetForPreprocessing,
-                   get_sound_preprocessing_dataloader)
+                   get_sound_preprocessing_dataloader,
+                   init_sqlite)
 from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
 from .model_types import NeuralCodec, Wav2Vec
 from .open_musiclm import (get_or_compute_acoustic_token_ids,
@@ -79,25 +79,6 @@ def noop(*args, **kwargs):
 
 def without_none(arr):
     return list(filter(lambda x: x is not None, arr))
-
-# sqlite helpers
-
-def adapt_array(arr):
-    """
-    http://stackoverflow.com/a/31312102/190597 (SoulNibbler)
-    """
-    out = io.BytesIO()
-    np.save(out, arr)
-    out.seek(0)
-    return sqlite3.Binary(out.read())
-
-def convert_array(text):
-    out = io.BytesIO(text)
-    out.seek(0)
-    return np.load(out)
-
-sqlite3.register_adapter(np.ndarray, adapt_array)
-sqlite3.register_converter("array", convert_array)
 
 @beartype
 class DataPreprocessor(nn.Module):
@@ -205,15 +186,13 @@ class DataPreprocessor(nn.Module):
                 copy_file_to_folder(config_path, configs_folder)
 
         if self.is_main:
-            self.conn = sqlite3.connect(str(self.results_folder / 'preprocessed.db'), detect_types=sqlite3.PARSE_DECLTYPES)
-            self.cursor = self.conn.cursor()
-            self.cursor.execute("CREATE TABLE IF NOT EXISTS tokens(idx integer primary key, clap array, semantic array, coarse array, fine array)")
+            self.conn, self.cursor = init_sqlite(str(self.results_folder / 'preprocessed.db'))
+            self.cursor.execute("CREATE TABLE IF NOT EXISTS tokens(idx integer primary key, path text, clap array, semantic array, coarse array, fine array)")
 
         self.accelerator.wait_for_everyone()
 
         if not self.is_main:
-            self.conn = sqlite3.connect(str(self.results_folder / 'preprocessed.db'), detect_types=sqlite3.PARSE_DECLTYPES)
-            self.cursor = self.conn.cursor()
+            self.conn, self.cursor = init_sqlite(str(self.results_folder / 'preprocessed.db'))
 
     def print(self, msg):
         self.accelerator.print(msg)

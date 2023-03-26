@@ -2,6 +2,9 @@ from functools import partial, wraps
 from pathlib import Path
 from beartype.typing import Literal
 from itertools import cycle
+import sqlite3
+import io
+import random
 
 import torch
 import numpy as np
@@ -25,10 +28,37 @@ def exists(val):
 def cast_tuple(val, length = 1):
     return val if isinstance(val, tuple) else ((val,) * length)
 
+# sqlite helpers for preprocessing
+
+def adapt_array(arr):
+    """
+    http://stackoverflow.com/a/31312102/190597 (SoulNibbler)
+    """
+    out = io.BytesIO()
+    np.save(out, arr)
+    out.seek(0)
+    return sqlite3.Binary(out.read())
+
+def convert_array(text):
+    out = io.BytesIO(text)
+    out.seek(0)
+    return np.load(out)
+
+sqlite3.register_adapter(np.ndarray, adapt_array)
+sqlite3.register_converter("array", convert_array)
+
+@beartype
+def init_sqlite(db_path):
+    """Connect to a sqlite database. Will create a new one if it doesn't exist."""
+    conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+    cursor = conn.cursor()
+    return conn, cursor
+
 # type
 
 OptionalIntOrTupleInt = Optional[Union[int, Tuple[Optional[int], ...]]]
 FloatOrInt = Union[float, int]
+
 # dataset functions
 
 @beartype
@@ -253,52 +283,140 @@ def get_sound_preprocessing_dataloader(ds, **kwargs):
     kwargs.setdefault('batch_size', 1)
     return DataLoader(ds, **kwargs)
 
-
 @beartype
-class PreprocessedDataset(IterableDataset):
+class PreprocessedDataset(Dataset):
     def __init__(
         self,
         folder,
         stage: Literal['semantic', 'coarse', 'fine'],
-        ds_fields: Tuple[str, ...],
-        split: Literal['train', 'valid']
+        semantic_window_seconds: int=10,
+        coarse_window_seconds: int=4,
+        fine_window_seconds: int=2,
+        semantic_steps_per_second=50,
+        acoustic_steps_per_second=75,
     ):
         super().__init__()
-        path = Path(folder) / stage
-        assert path.exists(), 'preprocessed data does not exist. run ./scripts/preprocess_data.py first.'
+        path = Path(folder)
+        assert path.exists(), 'folder does not exist'
 
-        shards = []
-        for shard in path.glob(f'{split}_*.npy'):
-            shards.append(shard)
-        assert len(shards) > 0, 'no shards found'
-        shards = sorted(shards)
+        self.stage = stage
+        self.semantic_window_seconds = semantic_window_seconds
+        self.coarse_window_seconds = coarse_window_seconds
+        self.fine_window_seconds = fine_window_seconds
+        self.semantic_steps_per_second = semantic_steps_per_second
+        self.acoustic_steps_per_second = acoustic_steps_per_second
 
-        self.shards = cycle(shards)
-        self.ds_fields = ds_fields
+        self.conn, self.cursor = init_sqlite(str(path / 'preprocessed.db'))
+        self.cursor.execute('SELECT idx from tokens')
+        self.ids = [i[0] for i in self.cursor.fetchall()]
 
-    def load_shard(self, file_path):
-        return np.load(file_path, allow_pickle=True)
+    def __len__(self):
+        return len(self.ids)
 
-    def __iter__(self):
-        while exists(x := next(self.shards, None)):
-            loaded_shard = self.load_shard(x).item()
+    def get_and_assert_audio_length_from_tokens(self, clap_token_ids=None, semantic_token_ids=None, coarse_token_ids=None, fine_token_ids=None):
+        """compute original audio length from tokens and assert that all provided tokens have the same audio length"""
+        clap_audio_length = clap_token_ids.shape[0] + 10 - 1 if exists(clap_token_ids) else None
+        semantic_audio_length = (semantic_token_ids.shape[1] + 1) // self.semantic_steps_per_second if exists(semantic_token_ids) else None
+        coarse_audio_length = coarse_token_ids.shape[1] // self.acoustic_steps_per_second if exists(coarse_token_ids) else None
+        fine_audio_length = fine_token_ids.shape[1] // self.acoustic_steps_per_second if exists(fine_token_ids) else None
 
-            if not exists(loaded_shard):
-                raise ValueError(f'found empty shard {x}. it is likely that batches_per_shard was too small when preprocessing the data.')
+        lengths = [clap_audio_length, semantic_audio_length, coarse_audio_length, fine_audio_length]
+        lengths = [int(l) for l in lengths if exists(l)]
+        assert len(set(lengths)) == 1, 'audio lengths are not equal'
 
-            data = []
-            data_length = None
-            for key in self.ds_fields:
-                val = loaded_shard[key]
-                data.append(val)
+        return lengths[0]
+    
+    def get_clap_tokens(self, clap_token_ids, start_idx):
+        """aggregate clap token over entire context with a sliding"""
+        return clap_token_ids[start_idx].unsqueeze(0)
 
-                if exists(data_length):
-                    assert data_length == len(val), f'data length mismatch in shard {x}'
-                else:
-                    data_length = len(val)
+    def crop_semantic_tokens(self, semantic_token_ids, start_idx, end_idx):
+        # with start_idx = 0, end_idx = 2, semantic_steps_per_second=50
+        # we return semantic_token_ids[:, 0:99]
+        return semantic_token_ids[:, start_idx * self.semantic_steps_per_second: end_idx * self.semantic_steps_per_second - 1]
 
-            for i in range(data_length):
-                yield tuple(torch.tensor(val[i]) for val in data)
+    def crop_acoustic_tokens(self, coarse_or_fine_ids, start_idx, end_idx):
+        # with start_idx = 0, end_idx = 2, coarse_steps_per_second=75
+        # we return coarse_token_ids[:, 0:150]
+        return coarse_or_fine_ids[:, start_idx * self.acoustic_steps_per_second: end_idx * self.acoustic_steps_per_second]
+
+    def compute_crop_indices(self, audio_length, outside_window, inside_window=None):
+        outside_start_idx = random.randint(0, audio_length - outside_window)
+        outside_end_idx = outside_start_idx + outside_window
+        
+        if exists(inside_window):
+            inside_start_idx = random.randint(outside_start_idx, outside_end_idx - inside_window)
+            inside_end_idx = inside_start_idx + inside_window
+
+            return outside_start_idx, outside_end_idx, inside_start_idx, inside_end_idx
+        else:
+            return outside_start_idx, outside_end_idx, None, None
+
+    def __getitem__(self, idx):
+        sqlite_idx = self.ids[idx]
+
+        # load and crop the tokens
+        # 1) select a outer crop (in whole seconds) from clap tokens based on semantic window, taking the average if spans multiple windows
+        # 2) select an inner crop inside this range
+        # 3) return cropped tokens
+
+        # c - -
+        #   c - -
+        #     c - -
+        #       c - -
+        #         c - -
+        #           c - -    <- clap tokens with window size 3 computed in a sliding window
+        # s s s s s s s s    <- semantic tokens where 's' represents self.semantic_steps_per_second tokens
+        # c c c c c c c c    <- coarse tokens where 'c' represents self.acoustic_steps_per_second tokens
+        #           [    ]  <- 1st crop: start_idx=5, end_idx=8
+        #           [   ]    <- 2nd crop: start_idx=5, end_idx=7
+        # 0 1 2 3 4 5 6 7
+
+        if self.stage == 'semantic':
+            clap_token_ids, semantic_token_ids = self.cursor.execute(f'SELECT clap, semantic FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
+            clap_token_ids, semantic_token_ids = torch.from_numpy(clap_token_ids), torch.from_numpy(semantic_token_ids)
+
+            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids) 
+
+            outside_start_idx, outside_end_idx, _, _ = self.compute_crop_indices(audio_length, self.semantic_window_seconds) 
+
+            clap_token_ids = self.get_clap_tokens(clap_token_ids, outside_start_idx)
+            semantic_token_ids = self.crop_semantic_tokens(semantic_token_ids, outside_start_idx, outside_end_idx)
+
+            return (clap_token_ids, semantic_token_ids)
+        elif self.stage == 'coarse':
+            clap_token_ids, semantic_token_ids, coarse_token_ids = self.cursor.execute(f'SELECT clap, semantic, coarse FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
+            clap_token_ids, semantic_token_ids, coarse_token_ids = torch.from_numpy(clap_token_ids), torch.from_numpy(semantic_token_ids), torch.from_numpy(coarse_token_ids)
+
+            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids, coarse_token_ids=coarse_token_ids) 
+
+            outside_start_idx, outside_end_idx, inside_start_idx, inside_end_idx = self.compute_crop_indices(audio_length, self.semantic_window_seconds, self.coarse_window_seconds)
+
+            clap_token_ids = self.get_clap_tokens(clap_token_ids, outside_start_idx) 
+            semantic_token_ids = self.crop_semantic_tokens(semantic_token_ids, inside_start_idx, inside_end_idx)
+            coarse_token_ids = self.crop_acoustic_tokens(coarse_token_ids, inside_start_idx, inside_end_idx)
+
+            return (clap_token_ids, semantic_token_ids, coarse_token_ids)
+        elif self.stage == 'fine':
+            clap_token_ids, coarse_token_ids, fine_token_ids = self.cursor.execute(f'SELECT clap, coarse, fine FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
+            clap_token_ids, coarse_token_ids, fine_token_ids = torch.from_numpy(clap_token_ids), torch.from_numpy(coarse_token_ids), torch.from_numpy(fine_token_ids)
+
+            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, coarse_token_ids=coarse_token_ids, fine_token_ids=fine_token_ids) 
+
+            outside_start_idx, outside_end_idx, inside_start_idx, inside_end_idx = self.compute_crop_indices(audio_length, self.semantic_window_seconds, self.fine_window_seconds)
+
+            clap_token_ids = self.get_clap_tokens(clap_token_ids, outside_start_idx)
+            coarse_token_ids = self.crop_acoustic_tokens(coarse_token_ids, inside_start_idx, inside_end_idx)
+            fine_token_ids = self.crop_acoustic_tokens(fine_token_ids, inside_start_idx, inside_end_idx)
+
+            return (clap_token_ids, coarse_token_ids, fine_token_ids)
+        else:
+            raise Exception(f'invalid stage {self.stage}')
+
+@collate_one_or_multiple_tensors
+def concatenate_fn(batch):
+    return torch.cat(batch, dim=0)
 
 def get_preprocessed_dataloader(ds, **kwargs):
-    return DataLoader(ds, **kwargs)
+    collate_fn = concatenate_fn
+    return DataLoader(ds, collate_fn=collate_fn, **kwargs)

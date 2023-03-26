@@ -22,7 +22,7 @@ import math
 
 from .clap_quantized import ClapQuantized
 from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
-from .data import SoundDataset, get_dataloader, PreprocessedDataset, get_preprocessed_dataloader
+from .data import SoundDataset, PreprocessedDataset, get_dataloader, get_preprocessed_dataloader
 from .model_types import NeuralCodec, Wav2Vec
 from .open_musiclm import (CoarseStage, FineStage, SemanticStage,
                            TokenConditionedTransformer)
@@ -105,6 +105,8 @@ class SingleStageTrainer(nn.Module):
         *,
         num_train_steps,
         batch_size,
+        model_config,
+        training_config,
         dataset: Optional[Dataset] = None,
         wav2vec: Optional[Wav2Vec] = None,
         neural_codec: Optional[NeuralCodec] = None,
@@ -135,6 +137,8 @@ class SingleStageTrainer(nn.Module):
         self.accelerator = Accelerator(**accelerate_kwargs, kwargs_handlers=[kwargs_handler])
 
         self.use_preprocessed_data = use_preprocessed_data
+        self.model_config = model_config
+        self.training_config = training_config
 
         self.transformer = transformer
 
@@ -218,10 +222,15 @@ class SingleStageTrainer(nn.Module):
         # create dataset
 
         if self.use_preprocessed_data:
-            self.ds = PreprocessedDataset(folder, stage, self.ds_fields, split='train')
-            self.valid_ds = PreprocessedDataset(folder, stage, self.ds_fields, split='valid')
-            self.dl = get_preprocessed_dataloader(self.ds, batch_size=batch_size)
-            self.valid_dl = get_preprocessed_dataloader(self.valid_ds, batch_size=batch_size)
+            self.ds = PreprocessedDataset(
+                folder,
+                stage=self.stage,
+                semantic_window_seconds=int(self.model_config.global_cfg.semantic_audio_length_seconds),
+                coarse_window_seconds=int(self.model_config.global_cfg.coarse_audio_length_seconds),
+                fine_window_seconds=int(self.model_config.global_cfg.fine_audio_length_seconds),
+                semantic_steps_per_second=self.model_config.hubert_kmeans_cfg.output_hz,
+                acoustic_steps_per_second=self.model_config.encodec_cfg.output_hz,
+            )
         else:
             self.ds = dataset
             if not exists(self.ds):
@@ -238,23 +247,26 @@ class SingleStageTrainer(nn.Module):
                     ignore_load_errors=ignore_load_errors
                 )
 
-            # split for validation
+        # split for validation
 
-            if valid_frac > 0:
-                train_size = int((1 - valid_frac) * len(self.ds))
-                valid_size = len(self.ds) - train_size
-                self.ds, self.valid_ds = random_split(
-                    self.ds, [train_size, valid_size], generator=torch.Generator().manual_seed(random_split_seed))
-                self.print(
-                    f'training with dataset of {len(self.ds)} samples and validating with randomly splitted {len(self.valid_ds)} samples')
-            else:
-                self.valid_ds = self.ds
-                self.print(f'training with shared training and valid dataset of {len(self.ds)} samples')
+        if valid_frac > 0:
+            train_size = int((1 - valid_frac) * len(self.ds))
+            valid_size = len(self.ds) - train_size
+            self.ds, self.valid_ds = random_split(
+                self.ds, [train_size, valid_size], generator=torch.Generator().manual_seed(random_split_seed))
+            self.print(
+                f'training with dataset of {len(self.ds)} samples and validating with randomly splitted {len(self.valid_ds)} samples')
+        else:
+            self.valid_ds = self.ds
+            self.print(f'training with shared training and valid dataset of {len(self.ds)} samples')
 
-            # dataloader
+        # dataloader
 
+        if self.use_preprocessed_data:
+            self.dl = get_preprocessed_dataloader(self.ds, batch_size=batch_size, shuffle=True)
+            self.valid_dl = get_preprocessed_dataloader(self.valid_ds, batch_size=batch_size, shuffle=True)
+        else:
             self.dl = get_dataloader(self.ds, batch_size=batch_size, shuffle=True)
-
             self.valid_dl = get_dataloader(self.valid_ds, batch_size=batch_size, shuffle=True)
 
         # prepare with accelerator
