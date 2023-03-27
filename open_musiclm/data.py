@@ -73,6 +73,7 @@ class SoundDataset(Dataset):
         seq_len_multiple_of: OptionalIntOrTupleInt = None,
         ignore_files: Optional[List[str]] = None,
         ignore_load_errors=True,
+        random_crop=True,
     ):
         super().__init__()
         path = Path(folder)
@@ -91,6 +92,7 @@ class SoundDataset(Dataset):
 
         self.files = files
         self.ignore_load_errors = ignore_load_errors
+        self.random_crop = random_crop
 
         self.target_sample_hz = cast_tuple(target_sample_hz)
         num_outputs = len(self.target_sample_hz)
@@ -118,9 +120,9 @@ class SoundDataset(Dataset):
             else:
                 raise Exception(f'error loading file {file}')
             
-        return self.process_audio(data, sample_hz)
+        return self.process_audio(data, sample_hz, pad_to_target_length=True)
 
-    def process_audio(self, data, sample_hz):
+    def process_audio(self, data, sample_hz, pad_to_target_length=True):
 
         if data.shape[0] > 1:
             # the audio has more than 1 channel, convert to mono
@@ -148,16 +150,16 @@ class SoundDataset(Dataset):
 
                 if audio_length > target_length:
                     max_start = audio_length - target_length
-                    start = torch.randint(0, max_start, (1, ))
+                    start = torch.randint(0, max_start, (1, )) if self.random_crop else 0
 
                     temp_data = temp_data[:, start:start + target_length]
                     temp_data_normalized = temp_data_normalized[:, start:start + target_length]
                 else:
-                    temp_data = F.pad(temp_data, (0, target_length - audio_length), 'constant')
-                    temp_data_normalized = F.pad(temp_data_normalized, (0, target_length - audio_length), 'constant')
+                    if pad_to_target_length:
+                        temp_data = F.pad(temp_data, (0, target_length - audio_length), 'constant')
+                        temp_data_normalized = F.pad(temp_data_normalized, (0, target_length - audio_length), 'constant')
 
             data[unsorted_i] = temp_data_normalized if self.normalize[unsorted_i] else temp_data
-
         # resample if target_sample_hz is not None in the tuple
         data_tuple = tuple((resample(d, sample_hz, target_sample_hz) if exists(target_sample_hz) else d) for d, target_sample_hz in zip(data, self.target_sample_hz))
         # quantize non-normalized audio to a valid waveform
@@ -170,7 +172,7 @@ class SoundDataset(Dataset):
         for data, max_length, seq_len_multiple_of in zip(data_tuple, self.max_length, self.seq_len_multiple_of):
             audio_length = data.size(1)
 
-            if exists(max_length):
+            if exists(max_length) and pad_to_target_length:
                 assert audio_length == max_length, f'audio length {audio_length} does not match max_length {max_length}.'
 
             data = rearrange(data, '1 ... -> ...')
@@ -266,7 +268,7 @@ class SoundDatasetForPreprocessing(SoundDataset):
         else:
             data = F.pad(data, (0, sample_hz - data.size(1) % sample_hz), 'constant', value=0)
 
-        data = self.process_audio(data, sample_hz)
+        data = self.process_audio(data, sample_hz, pad_to_target_length=False)
 
         return {
             'idx': idx,

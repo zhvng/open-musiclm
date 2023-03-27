@@ -69,6 +69,8 @@
     "data_preprocessor_cfg": {
         "folder": "./data/fma_large",
         "results_folder": "./data/fma_preprocessed",
+        "max_audio_length_seconds": 30,
+        "random_crop": true,
         "clap_batch_size": 32
     }
 }

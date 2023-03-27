@@ -136,6 +136,8 @@ class SingleStageTrainerConfig:
 class DataPreprocessorConfig:
     folder: str = './data/fma_large'
     results_folder: str = './fma_preprocessed'
+    max_audio_length_seconds: int = 30
+    random_crop: bool = True
     clap_batch_size: int = 32
 
 @beartype

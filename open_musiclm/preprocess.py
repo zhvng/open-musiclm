@@ -99,6 +99,8 @@ class DataPreprocessor(nn.Module):
         wav2vec: Optional[Wav2Vec] = None,
         neural_codec: Optional[NeuralCodec] = None,
         audio_conditioner: Optional[ClapQuantized] = None,
+        max_audio_length_seconds=180,
+        random_crop=True,
         clap_audio_length_seconds=10,
         clap_batch_size=32,
         ignore_files: Optional[List[str]]=None,
@@ -118,6 +120,7 @@ class DataPreprocessor(nn.Module):
         self.audio_conditioner = audio_conditioner
         self.neural_codec = neural_codec
         self.num_coarse_quantizers = num_coarse_quantizers
+        self.max_audio_length_seconds = max_audio_length_seconds
         self.clap_audio_length_seconds = clap_audio_length_seconds
         self.clap_batch_size = clap_batch_size
         self.replace_existing = replace_existing
@@ -136,13 +139,14 @@ class DataPreprocessor(nn.Module):
 
         seq_len_multiple_of = (None, wav2vec.seq_len_multiple_of, None)
 
-        data_max_length_seconds = (None, None, None)
+        data_max_length_seconds = (max_audio_length_seconds, max_audio_length_seconds, max_audio_length_seconds)
 
         assert exists(folder), 'audio folder must be passed in for preprocessing'
 
         self.ds = SoundDatasetForPreprocessing(
             folder,
             max_length_seconds=data_max_length_seconds,
+            random_crop=random_crop,
             normalize=normalize,
             target_sample_hz=target_sample_hz,
             seq_len_multiple_of=seq_len_multiple_of,
