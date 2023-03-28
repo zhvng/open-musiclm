@@ -569,6 +569,8 @@ class ClapRVQTrainer(nn.Module):
         super().__init__()
         self.accelerator = Accelerator(**accelerate_kwargs)
 
+        self.log_with = accelerate_kwargs['log_with'] if 'log_with' in accelerate_kwargs else None
+
         self.audio_conditioner = audio_conditioner
         self.ds = dataset
         self.num_train_steps = num_train_steps
