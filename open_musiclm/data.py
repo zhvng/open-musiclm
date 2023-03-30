@@ -378,7 +378,7 @@ class PreprocessedDataset(Dataset):
 
         if self.stage == 'semantic':
             clap_token_ids, semantic_token_ids = self.cursor.execute(f'SELECT clap, semantic FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
-            clap_token_ids, semantic_token_ids = torch.from_numpy(clap_token_ids), torch.from_numpy(semantic_token_ids)
+            clap_token_ids, semantic_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(semantic_token_ids.astype(np.int32))
 
             audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids) 
 
@@ -390,7 +390,7 @@ class PreprocessedDataset(Dataset):
             return (clap_token_ids, semantic_token_ids)
         elif self.stage == 'coarse':
             clap_token_ids, semantic_token_ids, coarse_token_ids = self.cursor.execute(f'SELECT clap, semantic, coarse FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
-            clap_token_ids, semantic_token_ids, coarse_token_ids = torch.from_numpy(clap_token_ids), torch.from_numpy(semantic_token_ids), torch.from_numpy(coarse_token_ids)
+            clap_token_ids, semantic_token_ids, coarse_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(semantic_token_ids.astype(np.int32)), torch.from_numpy(coarse_token_ids.astype(np.int32)) 
 
             audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids, coarse_token_ids=coarse_token_ids) 
 
@@ -403,7 +403,7 @@ class PreprocessedDataset(Dataset):
             return (clap_token_ids, semantic_token_ids, coarse_token_ids)
         elif self.stage == 'fine':
             clap_token_ids, coarse_token_ids, fine_token_ids = self.cursor.execute(f'SELECT clap, coarse, fine FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
-            clap_token_ids, coarse_token_ids, fine_token_ids = torch.from_numpy(clap_token_ids), torch.from_numpy(coarse_token_ids), torch.from_numpy(fine_token_ids)
+            clap_token_ids, coarse_token_ids, fine_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(coarse_token_ids.astype(np.int32)), torch.from_numpy(fine_token_ids.astype(np.int32)) 
 
             audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, coarse_token_ids=coarse_token_ids, fine_token_ids=fine_token_ids) 
 

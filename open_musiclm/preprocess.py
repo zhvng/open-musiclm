@@ -265,6 +265,11 @@ class DataPreprocessor(nn.Module):
                 coarse_token_ids = coarse_token_ids.detach().cpu().numpy()
                 fine_token_ids = fine_token_ids.detach().cpu().numpy()
 
+                # convert to the smallest int type that can fit up to the value of 1025
+                clap_token_ids = clap_token_ids.astype(np.uint16)
+                semantic_token_ids = semantic_token_ids.astype(np.uint16)
+                coarse_token_ids = coarse_token_ids.astype(np.uint16)
+                fine_token_ids = fine_token_ids.astype(np.uint16)
                 # add tokens to sqlite db
                 self.cursor.execute("INSERT INTO tokens VALUES (?, ?, ?, ?, ?, ?)", (idx, inputs['file_path'][0], clap_token_ids, semantic_token_ids, coarse_token_ids, fine_token_ids))
                 self.conn.commit()
