@@ -80,9 +80,10 @@ class FineConfig:
 
 @dataclass
 class GlobalConfig:
-    semantic_audio_length_seconds: float = 8.0
+    semantic_audio_length_seconds: float = 10.0
     coarse_audio_length_seconds: float = 4.0
     fine_audio_length_seconds: float = 2.0
+    clap_audio_length_seconds: float = 10.0
     num_coarse_quantizers: int = 3
     num_fine_quantizers: int = 5
 
@@ -383,6 +384,7 @@ def create_data_preprocessor_from_config(
         semantic_audio_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         coarse_audio_length_seconds=model_config.global_cfg.coarse_audio_length_seconds,
         fine_audio_length_seconds=model_config.global_cfg.fine_audio_length_seconds,
+        clap_audio_length_seconds=model_config.global_cfg.clap_audio_length_seconds,
         config_paths=config_paths,
         **asdict(training_config.data_preprocessor_cfg)
     ).to(device)

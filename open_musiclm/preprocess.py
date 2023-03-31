@@ -102,6 +102,7 @@ class DataPreprocessor(nn.Module):
         max_audio_length_seconds=180,
         random_crop=True,
         clap_audio_length_seconds=10,
+        semantic_audio_length_seconds=10,
         clap_batch_size=32,
         ignore_files: Optional[List[str]]=None,
         ignore_load_errors=True,
@@ -121,7 +122,10 @@ class DataPreprocessor(nn.Module):
         self.neural_codec = neural_codec
         self.num_coarse_quantizers = num_coarse_quantizers
         self.max_audio_length_seconds = max_audio_length_seconds
-        self.clap_audio_length_seconds = clap_audio_length_seconds
+        self.clap_audio_length_seconds = int(clap_audio_length_seconds)
+        self.semantic_audio_length_seconds = int(semantic_audio_length_seconds)
+        # TODO: allow a smaller clap length than semantic length, and average the clap embeddings over the time period as in the paper
+        assert self.clap_audio_length_seconds == self.semantic_audio_length_seconds, 'clap window must be equal to semantic window for now'
         self.clap_batch_size = clap_batch_size
         self.replace_existing = replace_existing
 
@@ -222,7 +226,7 @@ class DataPreprocessor(nn.Module):
         return next(self.parameters()).device
 
     def generate_tokens_from_batch(self, raw_wave_for_clap, raw_wave_for_semantic, raw_wave_for_acoustic):
-        # split clap waveform into a 10 second sliding window with 1 second interval. sample rate is self.audio_conditioner.sample_rate
+        # split clap waveform into a clap_audio_length_seconds sliding window with 1 second interval. sample rate is self.audio_conditioner.sample_rate
         clap_split = raw_wave_for_clap.unfold(
             -1,
             self.audio_conditioner.sample_rate * self.clap_audio_length_seconds,
