@@ -269,7 +269,7 @@ class DataPreprocessor(nn.Module):
                 coarse_token_ids = coarse_token_ids.detach().cpu().numpy()
                 fine_token_ids = fine_token_ids.detach().cpu().numpy()
 
-                # convert to the smallest int type that can fit up to the value of 1025
+                # convert to int16 to save space
                 clap_token_ids = clap_token_ids.astype(np.uint16)
                 semantic_token_ids = semantic_token_ids.astype(np.uint16)
                 coarse_token_ids = coarse_token_ids.astype(np.uint16)
