@@ -247,7 +247,6 @@ class SingleStageTrainer(nn.Module):
                 semantic_window_seconds=int(self.model_config.global_cfg.semantic_audio_length_seconds),
                 coarse_window_seconds=int(self.model_config.global_cfg.coarse_audio_length_seconds),
                 fine_window_seconds=int(self.model_config.global_cfg.fine_audio_length_seconds),
-                clap_window_seconds=int(self.model_config.global_cfg.clap_audio_length_seconds),
                 semantic_steps_per_second=self.model_config.hubert_kmeans_cfg.output_hz,
                 acoustic_steps_per_second=self.model_config.encodec_cfg.output_hz,
             )
