@@ -319,7 +319,7 @@ class PreprocessedDataset(Dataset):
 
     def get_and_assert_audio_length_from_tokens(self, clap_token_ids=None, semantic_token_ids=None, coarse_token_ids=None, fine_token_ids=None):
         """compute original audio length from tokens and assert that all provided tokens have the same audio length"""
-        clap_audio_length = clap_token_ids.shape[0] + 10 - 1 if exists(clap_token_ids) else None
+        clap_audio_length = clap_token_ids.shape[0] + self.semantic_window_seconds - 1 if exists(clap_token_ids) else None
         semantic_audio_length = (semantic_token_ids.shape[1] + 1) // self.semantic_steps_per_second if exists(semantic_token_ids) else None
         coarse_audio_length = coarse_token_ids.shape[1] // self.acoustic_steps_per_second if exists(coarse_token_ids) else None
         fine_audio_length = fine_token_ids.shape[1] // self.acoustic_steps_per_second if exists(fine_token_ids) else None
