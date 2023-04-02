@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from typing_extensions import Annotated
 import time
 import math
+from dataclasses import asdict
 
 from .clap_quantized import ClapQuantized
 from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
@@ -65,6 +66,17 @@ def accum_log(log, new_logs):
         log[key] = old_value + new_value
     return log
 
+def sanitize_hparams(hps):
+    for key, value in hps.items():
+        if not (
+            isinstance(value, int) or 
+            isinstance(value, float) or 
+            isinstance(value, str) or 
+            isinstance(value, bool) or 
+            isinstance(value, torch.Tensor)
+        ):
+            hps[key] = str(value)
+    return hps
 
 # auto data to module keyword argument routing functions
 
@@ -235,6 +247,7 @@ class SingleStageTrainer(nn.Module):
                 semantic_window_seconds=int(self.model_config.global_cfg.semantic_audio_length_seconds),
                 coarse_window_seconds=int(self.model_config.global_cfg.coarse_audio_length_seconds),
                 fine_window_seconds=int(self.model_config.global_cfg.fine_audio_length_seconds),
+                clap_window_seconds=int(self.model_config.global_cfg.clap_audio_length_seconds),
                 semantic_steps_per_second=self.model_config.hubert_kmeans_cfg.output_hz,
                 acoustic_steps_per_second=self.model_config.encodec_cfg.output_hz,
             )
@@ -317,7 +330,18 @@ class SingleStageTrainer(nn.Module):
             self.tokens_folder = self.results_folder / 'tokens'
             self.tokens_folder.mkdir(parents=True, exist_ok=True)
 
-        hps = {"num_train_steps": num_train_steps, "learning_rate": lr}
+        hps = asdict(self.model_config.global_cfg)
+        if stage == 'semantic':
+            hps.update(asdict(self.model_config.semantic_cfg))
+            hps.update(asdict(self.training_config.semantic_trainer_cfg))
+        elif stage == 'coarse':
+            hps.update(asdict(self.model_config.coarse_cfg))
+            hps.update(asdict(self.training_config.coarse_trainer_cfg))
+        elif stage == 'fine':
+            hps.update(asdict(self.model_config.fine_cfg))
+            hps.update(asdict(self.training_config.fine_trainer_cfg))
+
+        hps = sanitize_hparams(hps)
 
         if 'tensorboard' in self.log_with:
             self.accelerator.init_trackers(f"{stage}_stage_{int(time.time() * 1000)}", config=hps)
