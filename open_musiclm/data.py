@@ -274,7 +274,6 @@ class SoundDatasetForPreprocessing(SoundDataset):
                 mode="constant",
                 value=0,
             )
-            print(data.shape)
         else:
             data = F.pad(data, (0, sample_hz - data.size(1) % sample_hz), 'constant', value=0)
 
