@@ -149,6 +149,7 @@ class DataPreprocessor(nn.Module):
 
         self.ds = SoundDatasetForPreprocessing(
             folder,
+            pad_to_seconds=self.semantic_audio_length_seconds,
             max_length_seconds=data_max_length_seconds,
             random_crop=random_crop,
             normalize=normalize,

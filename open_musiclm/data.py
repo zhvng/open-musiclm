@@ -241,8 +241,10 @@ class SoundDatasetForPreprocessing(SoundDataset):
     def __init__(
         self,
         folder,
+        pad_to_seconds: int = 10,
         **kwargs
     ):
+        self.pad_to_seconds = pad_to_seconds
         super().__init__(folder=folder, **kwargs)
 
     def __getitem__(self, idx):
@@ -259,12 +261,20 @@ class SoundDatasetForPreprocessing(SoundDataset):
             else:
                 raise Exception(f'error loading file {file}')
 
-        # if audio length is less than 10 seconds, pad to 10 seconds
+        # if audio length is less than pad to seconds, repeat pad
         # else pad audio to nearest second
         # this is so at least one semantic token sequence can be extracted from the audio
-        # TODO: support longer context
-        if data.size(1) < 10 * sample_hz:
-            data = F.pad(data, (0, 10 * sample_hz - data.size(1)), 'constant', value=0)
+        max_len = self.pad_to_seconds * sample_hz
+        if data.size(1) < max_len:
+            n_repeat = int(max_len / data.size(1))
+            data = data.repeat(1, n_repeat)
+            data = F.pad(
+                data,
+                (0, max_len - data.size(1)),
+                mode="constant",
+                value=0,
+            )
+            print(data.shape)
         else:
             data = F.pad(data, (0, sample_hz - data.size(1) % sample_hz), 'constant', value=0)
 
