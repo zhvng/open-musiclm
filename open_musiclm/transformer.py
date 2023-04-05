@@ -10,6 +10,8 @@ import math
 
 from .utils import default, exists, grad_shrink, l2norm
 
+import xformers.ops
+
 # bias-less layernorm, being used in more recent T5s, PaLM, also in @borisdayma 's experiments shared with me
 # greater stability
 
@@ -157,13 +159,17 @@ class Attention(nn.Module):
         norm_context=False,
         num_null_kv=0,
         dropout=0.1,
-        scale=8
+        scale=8,
+        use_memory_efficient_attention=False
     ):
         super().__init__()
         self.heads = heads
         self.scale = scale
         self.causal = causal
         self.non_causal_prefix = non_causal_prefix
+        self.dropout = dropout
+        self.use_memory_efficient_attention = use_memory_efficient_attention
+
         inner_dim = dim_head * heads
 
         dim_context = default(dim_context, dim)
@@ -171,7 +177,7 @@ class Attention(nn.Module):
         self.norm = LayerNorm(dim)
         self.context_norm = LayerNorm(dim_context) if norm_context else nn.Identity()
 
-        self.attn_dropout = nn.Dropout(dropout)
+        self.attn_dropout = nn.Dropout(dropout) if not self.use_memory_efficient_attention else None
 
         self.num_null_kv = num_null_kv
         self.null_kv = nn.Parameter(torch.randn(2, num_null_kv, dim_head)) if num_null_kv > 0 else None
@@ -246,40 +252,67 @@ class Attention(nn.Module):
         q = q * self.q_scale
         k = k * self.k_scale
 
-        # similarities
-
-        sim = einsum('b h i d, b j d -> b h i j', q, k) * self.scale
-
-        if exists(attn_bias):
-            attn_bias = F.pad(attn_bias, (self.num_null_kv, 0), value=0.)
-            sim = sim + attn_bias
-
-        if exists(mask):
-            mask = F.pad(mask, (self.num_null_kv, 0), value=True)
-            mask = rearrange(mask, 'b j -> b 1 1 j')
-            sim = sim.masked_fill(~mask, -torch.finfo(sim.dtype).max)
-
-        if self.causal:
-            i, j = sim.shape[-2:]
-            causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
-
-            if self.non_causal_prefix > 0:
-                causal_mask[:self.non_causal_prefix, :(self.non_causal_prefix + j - i)] = False
-
-            sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
-
         # attention
 
-        attn = sim.softmax(dim=-1)
-        attn = self.attn_dropout(attn)
+        if self.use_memory_efficient_attention:
+            if exists(attn_bias):
+                attn_bias = F.pad(attn_bias, (self.num_null_kv, 0), value=0.)
 
-        # aggregate
+                if exists(mask):
+                    mask = F.pad(mask, (self.num_null_kv, 0), value=True)
+                    mask = rearrange(mask, 'b j -> b 1 1 j')
+                    attn_bias = attn_bias.masked_fill(~mask, -torch.finfo(attn_bias.dtype).max)
 
-        out = einsum('b h i j, b j d -> b h i d', attn, v)
+                if self.causal:
+                    i, j = attn_bias.shape[-2:]
+                    causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
 
-        # merge heads
+                    if self.non_causal_prefix > 0:
+                        causal_mask[:self.non_causal_prefix, :(self.non_causal_prefix + j - i)] = False
 
-        out = rearrange(out, 'b h n d -> b n (h d)')
+                    attn_bias = attn_bias.masked_fill(causal_mask, -torch.finfo(attn_bias.dtype).max)
+
+            q = rearrange(q, 'b h n d -> b n h d').contiguous()
+            k = repeat(k, 'b n d -> b n h d', h=self.heads).contiguous()
+            v = repeat(v, 'b n d -> b n h d', h=self.heads).contiguous()
+
+            # compute attention
+            # note: this will still be quadratic wrt memory because of the attention bias tensor, but it's faster
+            out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=attn_bias, p=self.dropout)
+
+            # merge heads
+            out = rearrange(out, 'b n h d -> b n (h d)')
+
+        else:
+            sim = einsum('b h i d, b j d -> b h i j', q, k) * self.scale
+
+            if exists(attn_bias):
+                attn_bias = F.pad(attn_bias, (self.num_null_kv, 0), value=0.)
+                sim = sim + attn_bias
+
+            if exists(mask):
+                mask = F.pad(mask, (self.num_null_kv, 0), value=True)
+                mask = rearrange(mask, 'b j -> b 1 1 j')
+                sim = sim.masked_fill(~mask, -torch.finfo(sim.dtype).max)
+
+            if self.causal:
+                i, j = sim.shape[-2:]
+                causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
+
+                if self.non_causal_prefix > 0:
+                    causal_mask[:self.non_causal_prefix, :(self.non_causal_prefix + j - i)] = False
+
+                sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
+
+            attn = sim.softmax(dim=-1)
+            attn = self.attn_dropout(attn)
+
+            # aggregate
+            out = einsum('b h i j, b j d -> b h i d', attn, v)
+
+            # merge heads
+            out = rearrange(out, 'b h n d -> b n (h d)')
+
         return self.to_out(out)
 
 # transformer

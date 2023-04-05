@@ -55,6 +55,7 @@ class SemanticConfig:
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
+    use_memory_efficient_attention: bool = True
 
 @dataclass
 class CoarseConfig:
@@ -66,6 +67,7 @@ class CoarseConfig:
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
+    use_memory_efficient_attention: bool = True
 
 @dataclass
 class FineConfig:
@@ -77,6 +79,7 @@ class FineConfig:
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
+    use_memory_efficient_attention: bool = True
 
 @dataclass
 class GlobalConfig:
