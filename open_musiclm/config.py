@@ -202,37 +202,41 @@ class disable_print:
 # model stages
 
 @beartype
-def create_clap_quantized_from_config(model_config: MusicLMModelConfig, rvq_path: Optional[str], device) -> ClapQuantized:
+def create_clap_quantized_from_config(model_config: MusicLMModelConfig, rvq_path: Optional[str], device, **kwargs) -> ClapQuantized:
     with disable_print():
         return create_clap_quantized(
             **asdict(model_config.clap_rvq_cfg),
             device=device,
             learn_rvq=False,
             rvq_checkpoint_path=rvq_path,
+            **kwargs,
         ).to(device)
 
 @beartype
-def create_hubert_kmeans_from_config(model_config: MusicLMModelConfig, kmeans_path: Optional[str], device) -> HfHubertWithKmeans:
+def create_hubert_kmeans_from_config(model_config: MusicLMModelConfig, kmeans_path: Optional[str], device, **kwargs) -> HfHubertWithKmeans:
     return get_hubert_kmeans(
         **asdict(model_config.hubert_kmeans_cfg),
         kmeans_path=kmeans_path,
+        **kwargs,
     ).to(device)
 
 @beartype
-def create_encodec_from_config(model_config: MusicLMModelConfig, device) -> EncodecWrapper:
-    return create_encodec_24khz(**asdict(model_config.encodec_cfg)).to(device)
+def create_encodec_from_config(model_config: MusicLMModelConfig, device, **kwargs) -> EncodecWrapper:
+    return create_encodec_24khz(**asdict(model_config.encodec_cfg), **kwargs).to(device)
 
 @beartype
 def create_semantic_transformer_from_config(
     model_config: MusicLMModelConfig,
     checkpoint_path: Optional[str],
-    device
+    device,
+    **kwargs,
 ) -> TokenConditionedTransformer:
     transformer = create_semantic_transformer(
         **asdict(model_config.semantic_cfg),
         clap_codebook_size=model_config.clap_rvq_cfg.codebook_size,
         semantic_codebook_size=model_config.hubert_kmeans_cfg.codebook_size,
         num_clap_quantizers=model_config.clap_rvq_cfg.rq_num_quantizers,
+        **kwargs,
     ).to(device)
 
     if exists(checkpoint_path):
@@ -244,7 +248,8 @@ def create_semantic_transformer_from_config(
 def create_coarse_transformer_from_config(
     model_config: MusicLMModelConfig,
     checkpoint_path: Optional[str],
-    device
+    device,
+    **kwargs,
 ) -> TokenConditionedTransformer:
     transformer = create_coarse_transformer(
         **asdict(model_config.coarse_cfg),
@@ -252,7 +257,8 @@ def create_coarse_transformer_from_config(
         semantic_codebook_size=model_config.hubert_kmeans_cfg.codebook_size,
         acoustic_codebook_size=model_config.encodec_cfg.codebook_size,
         num_clap_quantizers=model_config.clap_rvq_cfg.rq_num_quantizers,
-        num_coarse_quantizers=model_config.global_cfg.num_coarse_quantizers
+        num_coarse_quantizers=model_config.global_cfg.num_coarse_quantizers,
+        **kwargs,
     ).to(device)
 
     if exists(checkpoint_path):
@@ -264,7 +270,8 @@ def create_coarse_transformer_from_config(
 def create_fine_transformer_from_config(
     model_config: MusicLMModelConfig,
     checkpoint_path: Optional[str],
-    device
+    device,
+    **kwargs,
 ) -> TokenConditionedTransformer:
     transformer = create_fine_transformer(
         **asdict(model_config.fine_cfg),
@@ -273,6 +280,7 @@ def create_fine_transformer_from_config(
         num_clap_quantizers=model_config.clap_rvq_cfg.rq_num_quantizers,
         num_coarse_quantizers=model_config.global_cfg.num_coarse_quantizers,
         num_fine_quantizers=model_config.global_cfg.num_fine_quantizers,
+        **kwargs,
     ).to(device)
 
     if exists(checkpoint_path):
@@ -290,7 +298,8 @@ def create_clap_rvq_trainer_from_config(
     results_folder: str,
     device,
     accelerate_kwargs: dict = {},
-    config_paths: Optional[List[str]] = None
+    config_paths: Optional[List[str]] = None,
+    **kwargs,
 ):
     trainer = ClapRVQTrainer(
         audio_conditioner=clap,
@@ -298,7 +307,8 @@ def create_clap_rvq_trainer_from_config(
         data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         accelerate_kwargs=accelerate_kwargs,
         config_paths=config_paths,
-        **asdict(training_config.clap_rvq_trainer_cfg)
+        **asdict(training_config.clap_rvq_trainer_cfg),
+        **kwargs,
     ).to(device)
 
     return trainer
@@ -310,7 +320,8 @@ def create_hubert_kmeans_trainer_from_config(
     hubert_kmeans: HfHubertWithKmeans,
     results_folder: str,
     device,
-    config_paths: Optional[List[str]] = None
+    config_paths: Optional[List[str]] = None,
+    **kwargs,
 ):
     trainer = HfHubertKmeansTrainer(
         hubert_kmeans=hubert_kmeans,
@@ -318,6 +329,7 @@ def create_hubert_kmeans_trainer_from_config(
         data_max_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         config_paths=config_paths,
         **asdict(training_config.hubert_kmeans_trainer_cfg),
+        **kwargs,
     ).to(device)
 
     return trainer
@@ -334,7 +346,8 @@ def create_single_stage_trainer_from_config(
     encodec_wrapper: Optional[EncodecWrapper]=None,
     device='cpu',
     accelerate_kwargs: dict = {},
-    config_paths: Optional[List[str]] = None
+    config_paths: Optional[List[str]] = None,
+    **kwargs,
 ) -> SingleStageTrainer:
     
     semantic_audio_length_seconds = model_config.global_cfg.semantic_audio_length_seconds
@@ -362,7 +375,8 @@ def create_single_stage_trainer_from_config(
         data_max_length_seconds=data_max_length_seconds,
         accelerate_kwargs=accelerate_kwargs,
         config_paths=config_paths,
-        **asdict(trainer_cfg)
+        **asdict(trainer_cfg),
+        **kwargs,
     ).to(device)
 
     return trainer
@@ -375,7 +389,8 @@ def create_data_preprocessor_from_config(
     wav2vec: HfHubertWithKmeans,
     encodec_wrapper: EncodecWrapper,
     device='cpu',
-    config_paths: Optional[List[str]] = None
+    config_paths: Optional[List[str]] = None,
+    **kwargs,
 ):
     data_preprocessor = DataPreprocessor(
         audio_conditioner=clap,
@@ -386,7 +401,8 @@ def create_data_preprocessor_from_config(
         fine_audio_length_seconds=model_config.global_cfg.fine_audio_length_seconds,
         clap_audio_length_seconds=model_config.global_cfg.clap_audio_length_seconds,
         config_paths=config_paths,
-        **asdict(training_config.data_preprocessor_cfg)
+        **asdict(training_config.data_preprocessor_cfg),
+        **kwargs,
     ).to(device)
 
     return data_preprocessor
@@ -401,7 +417,8 @@ def create_musiclm_from_config(
     fine_path: str,
     rvq_path: str,
     kmeans_path: str,
-    device
+    device,
+    **kwargs,
 ):
     clap = create_clap_quantized_from_config(model_config, rvq_path, device)
     wav2vec = create_hubert_kmeans_from_config(model_config, kmeans_path, device)
@@ -417,6 +434,7 @@ def create_musiclm_from_config(
         semantic_transformer=semantic_transformer,
         coarse_transformer=coarse_transformer,
         fine_transformer=fine_transformer,
+        **kwargs,
     ).to(device)
 
     return musiclm
