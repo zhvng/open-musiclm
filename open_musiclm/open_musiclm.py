@@ -741,6 +741,7 @@ class FineStage(nn.Module):
         self,
         *,
         coarse_token_ids: torch.Tensor,
+        fine_token_ids: Optional[torch.Tensor] = None,
         conditioning_text: Optional[List[str]] = None,
         conditioning_audio: Optional[torch.Tensor] = None,
         clap_token_ids: Optional[torch.Tensor] = None,
@@ -753,7 +754,6 @@ class FineStage(nn.Module):
         **kwargs
     ):
         clap_token_ids = get_or_compute_clap_token_ids(clap_token_ids, self.clap, conditioning_audio, conditioning_text)
-        fine_token_ids = None
 
         sampled_tokens = self.transformer_wrapper.generate(
             conditioning_token_ids=[clap_token_ids, coarse_token_ids],
@@ -865,6 +865,7 @@ class MusicLM(nn.Module):
         return_coarse_generated_wave=False,
         mask_out_generated_fine_tokens=False,
         coarse_sliding_window_step_percent=0.5,
+        fine_sliding_window_step_percent=1,
     ):
         assert exists(text), 'text needs to be passed in if one of the transformer requires conditioning'
         assert output_seconds <= semantic_window_seconds, 'no sliding semantic window (for now)'
@@ -914,22 +915,37 @@ class MusicLM(nn.Module):
             return wave
 
         # crop to fine window length and iterate 
-        all_coarse_token_ids = torch.split(all_coarse_token_ids, int(fine_window_seconds * acoustic_steps_per_second), dim=1)
+        fine_window_size = int(fine_window_seconds * acoustic_steps_per_second)
+        fine_step_size = int(fine_window_size * fine_sliding_window_step_percent)
+        all_coarse_token_ids_unfolded = all_coarse_token_ids.unfold(1, fine_window_size, fine_step_size)
+        all_coarse_token_ids_unfolded = rearrange(all_coarse_token_ids_unfolded, 'b n q w -> n b w q')
 
-        generated_waves = []
-        for coarse_token_ids in all_coarse_token_ids:
-            generated_wave = self.fine.generate(
+        all_fine_token_ids = None
+        for coarse_token_ids in all_coarse_token_ids_unfolded:
+
+            condition_length = int(fine_window_size * (1 - fine_sliding_window_step_percent))
+            condition_fine_token_ids = all_fine_token_ids[:, -condition_length:] if exists(
+                all_fine_token_ids) and condition_length > 0 else None
+            pred_fine_token_ids = self.fine.generate(
                 clap_token_ids=clap_token_ids,
                 coarse_token_ids=coarse_token_ids,
-                max_time_steps=int(fine_window_seconds * acoustic_steps_per_second),
-                reconstruct_wave=True,
+                fine_token_ids=condition_fine_token_ids,
+                max_time_steps=fine_window_size,
+                reconstruct_wave=False,
                 include_eos_in_output=False,
                 append_eos_to_conditioning_tokens=True,
                 temperature=0.4,
             )
-            generated_waves.append(generated_wave)
+            if not exists(all_fine_token_ids):
+                all_fine_token_ids = pred_fine_token_ids
+            else:
+                pred_fine_token_ids = pred_fine_token_ids[:, condition_length:]
+                all_fine_token_ids = torch.cat([all_fine_token_ids, pred_fine_token_ids], dim=1)
 
-        return torch.cat(generated_waves, dim=-1)
+        all_acoustic_token_ids = torch.cat([all_coarse_token_ids, all_fine_token_ids], dim=-1)
+        wave = self.neural_codec.decode_from_codebook_indices(all_acoustic_token_ids)
+        wave = rearrange(wave, 'b 1 n -> b n')
+        return wave
 
     @eval_decorator
     @torch.no_grad()
