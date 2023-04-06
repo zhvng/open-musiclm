@@ -136,6 +136,7 @@ class SingleStageTrainerConfig:
 @dataclass
 class DataPreprocessorConfig:
     folder: str = './data/fma_large'
+    metadata_folder: str = "./data/fma_metadata",
     results_folder: str = './fma_preprocessed'
     max_audio_length_seconds: int = 30
     random_crop: bool = True
