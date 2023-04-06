@@ -155,7 +155,8 @@ class DataPreprocessor(nn.Module):
             normalize=normalize,
             target_sample_hz=target_sample_hz,
             seq_len_multiple_of=seq_len_multiple_of,
-            ignore_load_errors=ignore_load_errors
+            ignore_load_errors=ignore_load_errors,
+            ignore_files=ignore_files,
         )
         
         # dataloader
