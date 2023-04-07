@@ -143,6 +143,7 @@ class DataPreprocessorConfig:
     results_folder: str = './fma_preprocessed'
     max_audio_length_seconds: int = 30
     random_crop: bool = True
+    num_crops: int = 1
     clap_batch_size: int = 32
 
 @beartype
