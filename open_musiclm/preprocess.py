@@ -104,6 +104,7 @@ class DataPreprocessor(nn.Module):
         clap_audio_length_seconds=10,
         semantic_audio_length_seconds=10,
         clap_batch_size=32,
+        num_crops=1,
         ignore_files: Optional[List[str]]=None,
         ignore_load_errors=True,
         replace_existing=False,
@@ -127,6 +128,7 @@ class DataPreprocessor(nn.Module):
         # TODO: allow a smaller clap length than semantic length, and average the clap embeddings over the time period as in the paper
         assert self.clap_audio_length_seconds == self.semantic_audio_length_seconds, 'clap window must be equal to semantic window for now'
         self.clap_batch_size = clap_batch_size
+        self.num_crops = num_crops
         self.replace_existing = replace_existing
 
         self.register_buffer('steps', torch.Tensor([0]))
@@ -179,7 +181,7 @@ class DataPreprocessor(nn.Module):
 
         # dataloader iterators
 
-        self.dl_iter = iter(self.dl)
+        self.dl_iter = cycle(self.dl)
 
         self.results_folder = Path(results_folder)
 
@@ -253,8 +255,8 @@ class DataPreprocessor(nn.Module):
 
     def process(self, log_fn=noop):
 
-        for inputs in tqdm(self.dl_iter, desc='processing data', mininterval=5):
-
+        for idx in tqdm(range(self.num_crops * len(self.ds)), desc='processing data', mininterval=5):
+            inputs = next(self.dl_iter)
             if exists(inputs):
                 idx = inputs['idx'].item()
                 
