@@ -81,14 +81,17 @@ class SoundDataset(Dataset):
 
         files = []
         ignore_files = default(ignore_files, [])
+        num_ignored = 0
         for ext in exts:
             for file in path.glob(f'**/*.{ext}'):
                 if any(ignore_file in str(file) for ignore_file in ignore_files):
-                    print(f'found ignored file, skipping')
+                    num_ignored += 1
                     continue
                 else:
                     files.append(file)
         assert len(files) > 0, 'no sound files found'
+        if num_ignored > 0:
+            print(f'skipped {num_ignored} ignored files')
 
         self.files = files
         self.ignore_load_errors = ignore_load_errors
