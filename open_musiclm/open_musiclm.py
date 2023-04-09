@@ -857,18 +857,18 @@ class MusicLM(nn.Module):
         text: Optional[List[str]] = None,
         prime_wave=None,
         output_seconds=8,
-        semantic_window_seconds=8,
+        semantic_window_seconds=10,
         coarse_window_seconds=4,
         fine_window_seconds=2,
         semantic_steps_per_second=50, # Note: for MERTv0 its actually 50 * seconds - 1
         acoustic_steps_per_second=75, # 75 for encodec, 50 for soundstream
         return_coarse_generated_wave=False,
         mask_out_generated_fine_tokens=False,
+        semantic_sliding_window_step_percent=0.5,
         coarse_sliding_window_step_percent=0.5,
         fine_sliding_window_step_percent=1,
     ):
         assert exists(text), 'text needs to be passed in if one of the transformer requires conditioning'
-        assert output_seconds <= semantic_window_seconds, 'no sliding semantic window (for now)'
 
         clap_token_ids = get_or_compute_clap_token_ids(None, self.clap, conditioning_audio=None, conditioning_text=text)
 
@@ -878,6 +878,19 @@ class MusicLM(nn.Module):
             include_eos_in_output=False,
             append_eos_to_conditioning_tokens=True,
         )
+
+        while all_semantic_token_ids.shape[1] < int(output_seconds * semantic_steps_per_second):
+            condition_length = int(semantic_window_seconds * semantic_steps_per_second * (1 - semantic_sliding_window_step_percent))
+            condition_semantic_token_ids = all_semantic_token_ids[:, -condition_length:]
+            pred_semantic_token_ids = self.semantic.generate(
+                clap_token_ids=clap_token_ids,
+                semantic_token_ids=condition_semantic_token_ids,
+                max_time_steps=int(output_seconds * semantic_steps_per_second),
+                include_eos_in_output=False,
+                append_eos_to_conditioning_tokens=True,
+            )
+            pred_semantic_token_ids = pred_semantic_token_ids[:, condition_length:]
+            all_semantic_token_ids = torch.cat([all_semantic_token_ids, pred_semantic_token_ids], dim=1)
 
         # sliding windows of coarse window size 
         window_size = int(coarse_window_seconds * semantic_steps_per_second - 1)
