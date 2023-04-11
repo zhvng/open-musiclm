@@ -82,9 +82,10 @@ class SoundDataset(Dataset):
         files = []
         ignore_files = default(ignore_files, [])
         num_ignored = 0
+        ignore_file_set = set([f.split('/')[-1] for f in ignore_files])
         for ext in exts:
             for file in path.glob(f'**/*.{ext}'):
-                if any(ignore_file in str(file) for ignore_file in ignore_files):
+                if file.name in ignore_file_set:
                     num_ignored += 1
                     continue
                 else:
