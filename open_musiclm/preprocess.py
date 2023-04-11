@@ -254,11 +254,11 @@ class DataPreprocessor(nn.Module):
         return clap_token_ids, semantic_token_ids, (coarse_token_ids, fine_token_ids)
 
     def process(self, log_fn=noop):
-
-        for idx in tqdm(range(self.num_crops * len(self.ds)), desc='processing data', mininterval=5):
+        iters = math.ceil(self.num_crops * len(self.ds) / self.accelerator.num_processes)
+        for idx in tqdm(range(iters), desc='processing data', mininterval=5):
             inputs = next(self.dl_iter)
             if exists(inputs):
-                
+                idx = idx * self.accelerator.num_processes + self.accelerator.process_index
                 if not self.replace_existing:
                     self.cursor.execute("SELECT * FROM tokens WHERE idx=?", (idx,))
                     if len(self.cursor.fetchall()) > 0:
