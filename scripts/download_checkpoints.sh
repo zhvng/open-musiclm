@@ -1,15 +1,7 @@
-# wav2vec k-means
-if [ -e ./checkpoints/vq-wav2vec_kmeans.pt ]
+# new clap checkpoint
+if [ -e ./checkpoints/music_speech_audioset_epoch_15_esc_89.98.pt ]
 then
-    echo "wav2vec k-means checkpoint already exists"
+    echo "clap checkpoint already downloaded"
 else
-    wget -P ./checkpoints  https://dl.fbaipublicfiles.com/fairseq/wav2vec/vq-wav2vec_kmeans.pt 
-fi
-
-if [ -e ./checkpoints/hubert_base_ls960.pt ]
-then
-    echo "hubert checkpoint already exists"
-else
-    wget -P ./checkpoints https://dl.fbaipublicfiles.com/hubert/hubert_base_ls960.pt 
-    wget -P ./checkpoints https://dl.fbaipublicfiles.com/hubert/hubert_base_ls960_L9_km500.bin
+    wget -P ./checkpoints 'https://huggingface.co/lukewys/laion_clap/resolve/main/music_speech_audioset_epoch_15_esc_89.98.pt'
 fi

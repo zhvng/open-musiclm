@@ -26,6 +26,8 @@ class ClapRVQConfig:
     enable_fusion: bool = False
     rq_ema_decay: float = 0.95
     threshold_ema_dead_code: float = 0.0
+    checkpoint_path: Optional[str] = None
+    amodel_type: str = 'HTSAT-tiny'
 
 @dataclass
 class HubertKmeansConfig:

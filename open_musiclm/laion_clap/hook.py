@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 import torchvision.transforms
+from contextlib import suppress
 import numpy as np
 from clap_module import create_model
 
@@ -64,7 +65,7 @@ class CLAP_Module(torch.nn.Module):
                 device=device,
                 enable_fusion=enable_fusion
             )
-        self.enbale_fusion = enable_fusion
+        self.enable_fusion = enable_fusion
         self.model = model
         self.model_cfg = model_cfg
         self.tokenize = RobertaTokenizer.from_pretrained('roberta-base')
@@ -80,7 +81,7 @@ class CLAP_Module(torch.nn.Module):
             power=2.0,
             norm=None,
             onesided=True,
-            n_mels=64,
+            n_mels=audio_cfg['mel_bins'],
             f_min=audio_cfg['fmin'],
             f_max=audio_cfg['fmax']
         )
@@ -124,7 +125,7 @@ class CLAP_Module(torch.nn.Module):
         else:
             print(f'Load our best checkpoint in the paper.')
             if model_id == -1:
-                model_id = 3 if self.enbale_fusion else 1
+                model_id = 3 if self.enable_fusion else 1
             package_dir = os.path.dirname(os.path.realpath(__file__))
             weight_file_name = download_names[model_id]
             ckpt = os.path.join(package_dir, weight_file_name)
@@ -146,7 +147,7 @@ class CLAP_Module(torch.nn.Module):
         mel = self.log_mel_transform(mel)
         return mel.T  # (T, n_mels)
 
-    def get_audio_features(self, sample, audio_data, max_len, data_truncating, data_filling, audio_cfg):
+    def get_audio_features(self, sample, audio_data, max_len, data_truncating, data_filling, audio_cfg, require_grad=False):
         """
         Calculate and add audio features to sample.
         Sample: a dict containing all the data of current sample.
@@ -155,8 +156,11 @@ class CLAP_Module(torch.nn.Module):
         data_truncating: the method of truncating data.
         data_filling: the method of filling data.
         audio_cfg: a dict containing audio configuration. Comes from model_cfg['audio_cfg'].
+        require_grad: whether to require gradient for audio data.
+            This is useful when we want to apply gradient-based classifier-guidance.
         """
-        with torch.no_grad():
+        grad_fn = suppress if require_grad else torch.no_grad
+        with grad_fn():
             if len(audio_data) > max_len:
                 if data_truncating == "rand_trunc":
                     longer = torch.tensor([True])
@@ -195,7 +199,7 @@ class CLAP_Module(torch.nn.Module):
                         mel_chunk_back = mel[idx_back:idx_back + chunk_frames, :]
 
                         # shrink the mel
-                        mel_shrink = torchvision.transforms.Resize(size=[chunk_frames, 64])(mel[None])[0]
+                        mel_shrink = torchvision.transforms.Resize(size=[chunk_frames, audio_cfg['mel_bins']])(mel[None])[0]
                         # logging.info(f"mel_shrink.shape: {mel_shrink.shape}")
 
                         # stack
@@ -254,11 +258,11 @@ class CLAP_Module(torch.nn.Module):
 
         Parameters
         ----------
-        x: torch.tensor (N,T): 
+        x: torch.Tensor (N,T):
             audio data, must be mono audio tracks.      
         Returns
         ----------
-        audio embed: numpy.darray (N,D):
+        audio embed: torch.Tensor (N,D):
             audio embeddings that extracted from audio files
         """ 
         self.model.eval()
@@ -270,9 +274,10 @@ class CLAP_Module(torch.nn.Module):
             # the 'fusion' truncate mode can be changed to 'rand_trunc' if run in unfusion mode
             temp_dict = self.get_audio_features(
                 temp_dict, audio_waveform, 480000, 
-                data_truncating='fusion', 
+                data_truncating='fusion' if self.enable_fusion else 'rand_trunc',
                 data_filling='repeatpad',
-                audio_cfg=self.model_cfg['audio_cfg']
+                audio_cfg=self.model_cfg['audio_cfg'],
+                require_grad=audio_waveform.requires_grad
             )
             audio_input.append(temp_dict)
         audio_embed = self.model.get_audio_embedding(audio_input)
@@ -290,7 +295,7 @@ class CLAP_Module(torch.nn.Module):
         
         Returns
         ----------
-        text_embed : torch.tensor (N,D):
+        text_embed : torch.Tensor (N,D):
             text embeddings that extracted from texts
         """ 
         self.model.eval()
