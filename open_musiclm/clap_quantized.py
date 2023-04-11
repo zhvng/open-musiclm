@@ -88,12 +88,20 @@ class ClapQuantized(nn.Module):
         return indices
 
 
-def create_clap_quantized(device=None, learn_rvq=False, enable_fusion=False, rvq_checkpoint_path=None, **kwargs):
+def create_clap_quantized(
+    device=None,
+    learn_rvq=False,
+    enable_fusion=False,
+    rvq_checkpoint_path=None,
+    checkpoint_path: Optional[str] = None,
+    amodel_type: str = 'HTSAT-tiny',
+    **kwargs
+):
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
-    clap = CLAP_Module(enable_fusion=enable_fusion, device=device)
-    clap.load_ckpt()
+    clap = CLAP_Module(enable_fusion=enable_fusion, device=device, amodel=amodel_type)
+    clap.load_ckpt(ckpt=checkpoint_path)
 
     clap_quantized = ClapQuantized(clap=clap, learn_rvq=learn_rvq, **kwargs)
 
