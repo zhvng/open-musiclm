@@ -258,7 +258,6 @@ class DataPreprocessor(nn.Module):
         for idx in tqdm(range(self.num_crops * len(self.ds)), desc='processing data', mininterval=5):
             inputs = next(self.dl_iter)
             if exists(inputs):
-                idx = inputs['idx'].item()
                 
                 if not self.replace_existing:
                     self.cursor.execute("SELECT * FROM tokens WHERE idx=?", (idx,))
