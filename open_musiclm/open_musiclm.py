@@ -874,7 +874,7 @@ class MusicLM(nn.Module):
 
         all_semantic_token_ids = self.semantic.generate(
             clap_token_ids=clap_token_ids,
-            max_time_steps=int(output_seconds * semantic_steps_per_second),
+            max_time_steps=int(min(output_seconds, semantic_window_seconds) * semantic_steps_per_second),
             include_eos_in_output=False,
             append_eos_to_conditioning_tokens=True,
         )
@@ -885,7 +885,7 @@ class MusicLM(nn.Module):
             pred_semantic_token_ids = self.semantic.generate(
                 clap_token_ids=clap_token_ids,
                 semantic_token_ids=condition_semantic_token_ids,
-                max_time_steps=int(output_seconds * semantic_steps_per_second),
+                max_time_steps=int(semantic_window_seconds * semantic_steps_per_second),
                 include_eos_in_output=False,
                 append_eos_to_conditioning_tokens=True,
             )
