@@ -4,6 +4,7 @@ import sys
 import torch
 import torchaudio
 from einops import rearrange
+from pathlib import Path
 import argparse
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -22,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--fine_path', required=True, help='path to fine stage checkpoint')
     parser.add_argument('--rvq_path', default='./checkpoints/clap.rvq.350.pt')
     parser.add_argument('--kmeans_path', default='./results/hubert_kmeans/kmeans.joblib')
+    parser.add_argument('--results_folder', default='./results', type=str)
     parser.add_argument('--return_coarse_wave', default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument('--duration', default=4, type=float, help='duration of audio to generate in seconds')
     parser.add_argument('--seed', default=0)
@@ -38,6 +40,9 @@ if __name__ == '__main__':
     kmeans_path = args.kmeans_path
     rvq_path = args.rvq_path
     seed = args.seed
+    results_folder = args.results_folder
+
+    Path(results_folder).mkdir(parents=True, exist_ok=True)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -72,4 +77,4 @@ if __name__ == '__main__':
         print(f'prompt: {args.prompt[i]}')
         print(f'topk similarities: {sim}')
         for j, w in enumerate(wave):
-            torchaudio.save(f'results/{args.prompt[i][:35]}_top_match_{j}.wav', w, musiclm.neural_codec.sample_rate)
+            torchaudio.save(Path(results_folder) / Path(f'{args.prompt[i][:35]}_top_match_{j}.wav'), w, musiclm.neural_codec.sample_rate)
