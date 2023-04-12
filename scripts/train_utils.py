@@ -2,6 +2,10 @@ from functools import wraps
 import logging
 import sys
 import os
+from pathlib import Path
+
+def exists(val):
+    return val is not None
 
 class disable_print:
     def __enter__(self):
@@ -43,3 +47,19 @@ def get_latest_checkpoints(results_folder, max_step=None):
         assert highest_transformer_step == highest_scheduler_step, 'transformer and scheduler checkpoints are not aligned'
 
     return (transformer_path, optimizer_path, scheduler_path), highest_transformer_step
+
+def validate_train_args(args):
+    assert not(exists(args.fine_tune_from) and exists(args.continue_from_dir)), 'choose one: fine tune from a checkpoint or continue from a directory'
+
+    print(f'saving results to {args.results_folder}, using model config {args.model_config} and training config {args.training_config}, using rvq checkpoint {args.rvq_path} and kmeans checkpoint {args.kmeans_path}')
+    if exists(args.continue_from_dir):
+        print(f'continuing from latest checkpoint in {args.continue_from_dir}')
+        assert not Path(args.continue_from_dir) == Path(args.results_folder), 'continue_from_dir must be different from results_folder'
+    elif exists(args.fine_tune_from):
+        print(f'fine tuning from checkpoint {args.fine_tune_from}. Make sure to use the same model config as the base model.')
+
+def load_checkpoint_from_args(trainer, args):
+    if exists(args.continue_from_dir):
+        checkpoints, steps = get_latest_checkpoints(args.continue_from_dir, args.continue_from_step)
+        print(f'loading checkpoints: {checkpoints}')
+        trainer.load(*checkpoints, steps=steps+1)
