@@ -130,6 +130,9 @@ python scripts/infer.py \
 
 You can use the `--return_coarse_wave` flag to skip the fine stage and reconstruct audio from coarse tokens alone.
 
+## Checkpoints
+You can download experimental checkpoints for the musiclm_large_small_context model [here](https://drive.google.com/drive/u/0/folders/1347glwEc-6XWulfU7NGrFrYTvTnjeVJE). To fine tune the model, call the train scripts with the `--fine_tune_from` flag.
+
 # Thank you
 * [Okio](https://okio.ai/) for providing compute to train the model! Okio is a startup that is developing Nendo - an open source generative music tool-suite
 that re-imagines music. If you're interested check them out at [okio.ai](https://okio.ai/)
