@@ -13,7 +13,7 @@ from open_musiclm.config import (create_clap_quantized_from_config,
                                  create_fine_transformer_from_config,
                                  create_single_stage_trainer_from_config,
                                  load_model_config, load_training_config)
-from scripts.train_utils import disable_print, get_latest_checkpoints
+from scripts.train_utils import load_checkpoint_from_args, validate_train_args
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train fine stage')
@@ -24,14 +24,12 @@ if __name__ == '__main__':
     parser.add_argument('--training_config', default='./configs/training/train_musiclm_fma.json')
     parser.add_argument('--rvq_path', default='./checkpoints/clap.rvq.350.pt')
     parser.add_argument('--kmeans_path', default='./results/hubert_kmeans/kmeans.joblib')
+    parser.add_argument('--fine_tune_from', default=None, type=str)
 
     args = parser.parse_args()
 
-    print(f'saving results to {args.results_folder}, using model config {args.model_config} and training config {args.training_config}, using rvq checkpoint {args.rvq_path} and kmeans checkpoint {args.kmeans_path}')
-    if args.continue_from_dir is not None:
-        print(f'continuing from latest checkpoint in {args.continue_from_dir}')
-        assert not Path(args.continue_from_dir) == Path(args.results_folder), 'continue_from_dir must be different from results_folder'
-
+    validate_train_args(args)
+ 
     model_config = load_model_config(args.model_config)
     training_config = load_training_config(args.training_config)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -49,7 +47,7 @@ if __name__ == '__main__':
     encodec_wrapper = create_encodec_from_config(model_config, device)
 
     print('loading fine stage...')
-    fine_transformer = create_fine_transformer_from_config(model_config, None, device)
+    fine_transformer = create_fine_transformer_from_config(model_config, args.fine_tune_from, device)
 
     trainer = create_single_stage_trainer_from_config(
         model_config=model_config, 
@@ -67,9 +65,6 @@ if __name__ == '__main__':
         },
         config_paths=[args.model_config, args.training_config])
 
-    if args.continue_from_dir is not None:
-        checkpoints, steps = get_latest_checkpoints(args.continue_from_dir, args.continue_from_step)
-        print(f'loading checkpoints: {checkpoints}')
-        trainer.load(*checkpoints, steps=steps+1)
+    load_checkpoint_from_args(trainer, args)
 
     trainer.train()
