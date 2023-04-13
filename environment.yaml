@@ -8,9 +8,9 @@ dependencies:
   - pip=22.3.1
   - pip:
     - --find-links https://download.pytorch.org/whl/torch_stable.html
-    - torch==1.13.1+cu117
-    - torchvision==0.14.1+cu117
-    - torchaudio==0.13.1+cu117
+    - torch==2.0.0+cu117
+    - torchvision==0.15.1+cu117
+    - torchaudio==2.0.1+cu117
     - einops>=0.4
     - vector-quantize-pytorch>=0.10.15
     - librosa==0.10.0

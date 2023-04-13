@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
-from beartype import beartype
 from beartype.typing import List, Optional
 from einops import einsum, rearrange, reduce, repeat
 from torch import einsum, nn
@@ -14,7 +13,7 @@ from .clap_quantized import ClapQuantized
 from .model_types import NeuralCodec, Wav2Vec
 from .transformer import Transformer
 from .utils import (all_rows_have_eos_id, append_eos_id,
-                    batch_unique_consecutive, ceil_div, default,
+                    batch_unique_consecutive, beartype_jit, ceil_div, default,
                     eval_decorator, exists, float32_to_int16,
                     generate_mask_with_prob, get_embeds, gumbel_sample,
                     int16_to_float32, mask_out_after_eos_id,
@@ -205,7 +204,7 @@ class TokenConditionedTransformer(nn.Module):
         return scaled_logits
 
 
-@beartype
+@beartype_jit
 class TokenConditionedTransformerWrapper(nn.Module):
     """Combination of SemanticTransformerWrapper, CoarseTransformerWrapper and FineTransformerWrapper in lucidrain's audiolm-pytorch, without the input processing + text conditioning"""
     def __init__(
@@ -239,7 +238,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
     @eval_decorator
     @torch.no_grad()
-    @beartype
+    @beartype_jit
     def generate(
         self,
         *,
@@ -400,7 +399,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         return running_loss / total_logits, all_logits, all_labels
 
 
-@beartype
+@beartype_jit
 def create_semantic_transformer(
     dim=1024,
     depth=6,
@@ -418,7 +417,7 @@ def create_semantic_transformer(
     return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence], dim=dim, depth=depth, **kwargs)
 
 
-@beartype
+@beartype_jit
 def create_coarse_transformer(
     dim=512,
     depth=6,
@@ -440,7 +439,7 @@ def create_coarse_transformer(
     return TokenConditionedTransformer(token_sequences=[clap_sequence, semantic_sequence, coarse_sequence], dim=dim, depth=depth, **kwargs)
 
 
-@beartype
+@beartype_jit
 def create_fine_transformer(
     dim=512,
     depth=6,
@@ -462,7 +461,7 @@ def create_fine_transformer(
     return TokenConditionedTransformer(token_sequences=[clap_sequence, coarse_sequence, fine_sequence], dim=dim, depth=depth, **kwargs)
 
 
-@beartype
+@beartype_jit
 def get_or_compute_clap_token_ids(clap_token_ids: Optional[torch.Tensor], clap: Optional[ClapQuantized], conditioning_audio: Optional[torch.Tensor], conditioning_text: Optional[List[str]]):
     if not exists(clap_token_ids):
         assert exists(conditioning_audio) ^ exists(conditioning_text), "either condition on text or audio"
@@ -475,7 +474,7 @@ def get_or_compute_clap_token_ids(clap_token_ids: Optional[torch.Tensor], clap: 
     return clap_token_ids
 
 
-@beartype
+@beartype_jit
 def get_or_compute_semantic_token_ids(semantic_token_ids: Optional[torch.Tensor], raw_audio: Optional[torch.Tensor], wav2vec: Optional[Wav2Vec]):
     if not exists(semantic_token_ids):
         assert exists(raw_audio)
@@ -485,7 +484,7 @@ def get_or_compute_semantic_token_ids(semantic_token_ids: Optional[torch.Tensor]
     return semantic_token_ids
 
 
-@beartype
+@beartype_jit
 def get_or_compute_acoustic_token_ids(coarse_token_ids: Optional[torch.Tensor], fine_token_ids: Optional[torch.Tensor], raw_audio: Optional[torch.Tensor], neural_codec: Optional[NeuralCodec], num_coarse_quantizers: int):
 
     if exists(raw_audio):
@@ -500,7 +499,7 @@ def get_or_compute_acoustic_token_ids(coarse_token_ids: Optional[torch.Tensor], 
     return coarse_token_ids, fine_token_ids
 
 
-@beartype
+@beartype_jit
 class SemanticStage(nn.Module):
     def __init__(
         self,
@@ -537,7 +536,7 @@ class SemanticStage(nn.Module):
 
     @eval_decorator
     @torch.no_grad()
-    @beartype
+    @beartype_jit
     def generate(
         self,
         *,
@@ -592,7 +591,7 @@ class SemanticStage(nn.Module):
         )
 
 
-@beartype
+@beartype_jit
 class CoarseStage(nn.Module):
     def __init__(
         self,
@@ -633,7 +632,7 @@ class CoarseStage(nn.Module):
 
     @eval_decorator
     @torch.no_grad()
-    @beartype
+    @beartype_jit
     def generate(
         self,
         *,
@@ -702,7 +701,7 @@ class CoarseStage(nn.Module):
         )
 
 
-@beartype
+@beartype_jit
 class FineStage(nn.Module):
     def __init__(
         self,
@@ -736,7 +735,7 @@ class FineStage(nn.Module):
 
     @eval_decorator
     @torch.no_grad()
-    @beartype
+    @beartype_jit
     def generate(
         self,
         *,
@@ -804,7 +803,7 @@ class FineStage(nn.Module):
         )
 
 
-@beartype
+@beartype_jit
 class MusicLM(nn.Module):
     def __init__(
         self,
