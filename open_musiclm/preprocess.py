@@ -11,7 +11,6 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 from accelerate import Accelerator, DistributedType
-from beartype import beartype
 from beartype.door import is_bearable
 from beartype.typing import Dict, List, Literal, Optional, Union
 from beartype.vale import Is
@@ -24,8 +23,7 @@ from typing_extensions import Annotated
 
 from .clap_quantized import ClapQuantized
 from .data import (SoundDatasetForPreprocessing,
-                   get_sound_preprocessing_dataloader,
-                   init_sqlite)
+                   get_sound_preprocessing_dataloader, init_sqlite)
 from .hf_hubert_kmeans import HfHubertWithKmeans, learn_kmeans
 from .model_types import NeuralCodec, Wav2Vec
 from .open_musiclm import (get_or_compute_acoustic_token_ids,
@@ -33,10 +31,10 @@ from .open_musiclm import (get_or_compute_acoustic_token_ids,
                            get_or_compute_semantic_token_ids)
 from .optimizer import get_linear_scheduler, get_optimizer
 from .utils import (all_rows_have_eos_id, append_eos_id,
-                    batch_unique_consecutive, ceil_div, default,
-                    eval_decorator, exists, generate_mask_with_prob,
-                    get_embeds, gumbel_sample, mask_out_after_eos_id,
-                    round_down_nearest_multiple, top_k, copy_file_to_folder)
+                    batch_unique_consecutive, beartype_jit, ceil_div,
+                    copy_file_to_folder, default, eval_decorator, exists,
+                    generate_mask_with_prob, get_embeds, gumbel_sample,
+                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
 
 
 def cycle(dl):
@@ -80,7 +78,7 @@ def noop(*args, **kwargs):
 def without_none(arr):
     return list(filter(lambda x: x is not None, arr))
 
-@beartype
+@beartype_jit
 class DataPreprocessor(nn.Module):
     """
     Class to preprocess audio files for the single stage transformer trainer.
