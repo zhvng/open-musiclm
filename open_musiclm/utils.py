@@ -10,8 +10,8 @@ import os
 from einops import rearrange, repeat, reduce
 
 def beartype_jit(func):
-    """decorator to enable beartype only if JIT_ENABLED is set to 1"""
-    return func if os.environ.get('JIT_ENABLED', '0') == '1' else beartype(func)
+    """decorator to enable beartype only if USE_BEARTYPE is set to 1"""
+    return beartype(func) if os.environ.get('USE_BEARTYPE', '0') == '1' else func
 
 # helper functions
 
