@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import torch
-from beartype import beartype
 from beartype.typing import Literal, Optional, List
 
 from .clap_quantized import ClapQuantized, create_clap_quantized
@@ -16,7 +15,7 @@ from .open_musiclm import (MusicLM, TokenConditionedTransformer,
                            create_semantic_transformer)
 from .trainer import ClapRVQTrainer, HfHubertKmeansTrainer, SingleStageTrainer
 from .preprocess import DataPreprocessor
-from .utils import exists
+from .utils import exists, beartype_jit
 
 
 @dataclass
@@ -92,7 +91,7 @@ class GlobalConfig:
     num_coarse_quantizers: int = 3
     num_fine_quantizers: int = 5
 
-@beartype
+@beartype_jit
 @dataclass
 class MusicLMModelConfig:
     clap_rvq_cfg: ClapRVQConfig
@@ -148,7 +147,7 @@ class DataPreprocessorConfig:
     num_crops: int = 1
     clap_batch_size: int = 32
 
-@beartype
+@beartype_jit
 @dataclass
 class MusicLMTrainingConfig:
     clap_rvq_trainer_cfg: ClapRVQTrainerConfig
@@ -159,7 +158,7 @@ class MusicLMTrainingConfig:
     data_preprocessor_cfg: DataPreprocessorConfig
     
 
-@beartype
+@beartype_jit
 def load_model_config(config_path: str) -> MusicLMModelConfig:
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -174,7 +173,7 @@ def load_model_config(config_path: str) -> MusicLMModelConfig:
         global_cfg=GlobalConfig(**config['global_cfg']),
     )
 
-@beartype
+@beartype_jit
 def load_training_config(config_path: str) -> MusicLMTrainingConfig:
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -208,7 +207,7 @@ class disable_print:
 
 # model stages
 
-@beartype
+@beartype_jit
 def create_clap_quantized_from_config(model_config: MusicLMModelConfig, rvq_path: Optional[str], device, **kwargs) -> ClapQuantized:
     with disable_print():
         return create_clap_quantized(
@@ -219,7 +218,7 @@ def create_clap_quantized_from_config(model_config: MusicLMModelConfig, rvq_path
             **kwargs,
         ).to(device)
 
-@beartype
+@beartype_jit
 def create_hubert_kmeans_from_config(model_config: MusicLMModelConfig, kmeans_path: Optional[str], device, **kwargs) -> HfHubertWithKmeans:
     return get_hubert_kmeans(
         **asdict(model_config.hubert_kmeans_cfg),
@@ -227,11 +226,11 @@ def create_hubert_kmeans_from_config(model_config: MusicLMModelConfig, kmeans_pa
         **kwargs,
     ).to(device)
 
-@beartype
+@beartype_jit
 def create_encodec_from_config(model_config: MusicLMModelConfig, device, **kwargs) -> EncodecWrapper:
     return create_encodec_24khz(**asdict(model_config.encodec_cfg), **kwargs).to(device)
 
-@beartype
+@beartype_jit
 def create_semantic_transformer_from_config(
     model_config: MusicLMModelConfig,
     checkpoint_path: Optional[str],
@@ -251,7 +250,7 @@ def create_semantic_transformer_from_config(
 
     return transformer
 
-@beartype
+@beartype_jit
 def create_coarse_transformer_from_config(
     model_config: MusicLMModelConfig,
     checkpoint_path: Optional[str],
@@ -273,7 +272,7 @@ def create_coarse_transformer_from_config(
 
     return transformer
 
-@beartype
+@beartype_jit
 def create_fine_transformer_from_config(
     model_config: MusicLMModelConfig,
     checkpoint_path: Optional[str],
@@ -297,7 +296,7 @@ def create_fine_transformer_from_config(
 
 # trainers
 
-@beartype
+@beartype_jit
 def create_clap_rvq_trainer_from_config(
     model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
@@ -320,7 +319,7 @@ def create_clap_rvq_trainer_from_config(
 
     return trainer
 
-@beartype
+@beartype_jit
 def create_hubert_kmeans_trainer_from_config(
     model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
@@ -341,7 +340,7 @@ def create_hubert_kmeans_trainer_from_config(
 
     return trainer
 
-@beartype
+@beartype_jit
 def create_single_stage_trainer_from_config(
     model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
@@ -388,7 +387,7 @@ def create_single_stage_trainer_from_config(
 
     return trainer
 
-@beartype
+@beartype_jit
 def create_data_preprocessor_from_config(
     model_config: MusicLMModelConfig,
     training_config: MusicLMTrainingConfig,
@@ -416,7 +415,7 @@ def create_data_preprocessor_from_config(
 
 # entire model
 
-@beartype
+@beartype_jit
 def create_musiclm_from_config(
     model_config: MusicLMModelConfig,
     semantic_path: str,

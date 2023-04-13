@@ -1,24 +1,24 @@
-from functools import partial, wraps
-from pathlib import Path
-from beartype.typing import Literal
-from itertools import cycle
-import sqlite3
 import io
 import random
+import sqlite3
+from functools import partial, wraps
+from itertools import cycle
+from pathlib import Path
 
-import torch
 import numpy as np
+import torch
 import torch.nn.functional as F
 import torchaudio
-from beartype import beartype
 from beartype.door import is_bearable
-from beartype.typing import Optional, Tuple, Union, List
+from beartype.typing import List, Literal, Optional, Tuple, Union
 from einops import rearrange
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torchaudio.functional import resample
 
-from .utils import curtail_to_multiple, int16_to_float32, float32_to_int16, zero_mean_unit_var_norm, default
+from .utils import (beartype_jit, curtail_to_multiple, default,
+                    float32_to_int16, int16_to_float32,
+                    zero_mean_unit_var_norm)
 
 # helper functions
 
@@ -47,7 +47,7 @@ def convert_array(text):
 sqlite3.register_adapter(np.ndarray, adapt_array)
 sqlite3.register_converter("array", convert_array)
 
-@beartype
+@beartype_jit
 def init_sqlite(db_path):
     """Connect to a sqlite database. Will create a new one if it doesn't exist."""
     conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -61,7 +61,7 @@ FloatOrInt = Union[float, int]
 
 # dataset functions
 
-@beartype
+@beartype_jit
 class SoundDataset(Dataset):
     def __init__(
         self,
@@ -240,7 +240,7 @@ def get_dataloader(ds, pad_to_longest = True, **kwargs):
     return DataLoader(ds, collate_fn = collate_fn, **kwargs)
 
 
-@beartype
+@beartype_jit
 class SoundDatasetForPreprocessing(SoundDataset):
     def __init__(
         self,
@@ -300,7 +300,7 @@ def get_sound_preprocessing_dataloader(ds, **kwargs):
     kwargs.setdefault('batch_size', 1)
     return DataLoader(ds, collate_fn=sound_preprocessing_collate_fn, **kwargs)
 
-@beartype
+@beartype_jit
 class PreprocessedDataset(Dataset):
     def __init__(
         self,

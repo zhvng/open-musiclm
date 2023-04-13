@@ -3,7 +3,6 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 import torchvision.transforms
-from beartype import beartype
 from beartype.typing import Dict, List, Optional, Union
 from einops import rearrange
 from torch import nn
@@ -11,10 +10,10 @@ from transformers import RobertaTokenizer
 from vector_quantize_pytorch import ResidualVQ
 
 from .laion_clap import CLAP_Module
-from .utils import exists
+from .utils import exists, beartype_jit
 
 
-@beartype
+@beartype_jit
 class ClapQuantized(nn.Module):
     def __init__(self,
                  *,

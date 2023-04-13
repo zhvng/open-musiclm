@@ -5,8 +5,13 @@ from torch.nn.utils.rnn import pad_sequence
 from beartype import beartype
 from pathlib import Path
 import shutil
+import os
 
 from einops import rearrange, repeat, reduce
+
+def beartype_jit(func):
+    """decorator to enable beartype only if JIT_ENABLED is set to 1"""
+    return func if os.environ.get('JIT_ENABLED', '0') == '1' else beartype(func)
 
 # helper functions
 
@@ -116,7 +121,7 @@ def batch_unique_consecutive(t, pad_value = 0.):
 
 # to get embedding from sequence with padding token
 
-@beartype
+@beartype_jit
 def get_embeds(
     embeddings: nn.Embedding,
     codes: torch.Tensor,

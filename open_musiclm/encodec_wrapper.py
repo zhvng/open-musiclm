@@ -1,15 +1,14 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from beartype import beartype
 from einops import rearrange
 from encodec import EncodecModel
 from torch import nn
 
-from .utils import exists
+from .utils import exists, beartype_jit
 
 
-@beartype
+@beartype_jit
 class EncodecWrapper(nn.Module):
     def __init__(self,
                  *,
