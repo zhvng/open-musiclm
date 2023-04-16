@@ -123,7 +123,7 @@ class SoundDataset(Dataset):
                 return self[torch.randint(0, len(self), (1,)).item()]
             else:
                 raise Exception(f'error loading file {file}')
-            
+
         return self.process_audio(data, sample_hz, pad_to_target_length=True)
 
     def process_audio(self, data, sample_hz, pad_to_target_length=True):
@@ -134,7 +134,7 @@ class SoundDataset(Dataset):
 
         # recursively crop the audio at random in the order of longest to shortest max_length_seconds, padding when necessary.
         # e.g. if max_length_seconds = (10, 4), pick a 10 second crop from the original, then pick a 4 second crop from the 10 second crop
-        # also use normalized data when specified 
+        # also use normalized data when specified
 
         temp_data = data
         temp_data_normalized = zero_mean_unit_var_norm(data)
@@ -143,10 +143,10 @@ class SoundDataset(Dataset):
         data = [None for _ in range(num_outputs)]
 
         sorted_max_length_seconds = sorted(
-            enumerate(self.max_length_seconds), 
+            enumerate(self.max_length_seconds),
             key=lambda t: (t[1] is not None, t[1])) # sort by max_length_seconds, while moving None to the beginning
 
-        for unsorted_i, max_length_seconds in sorted_max_length_seconds: 
+        for unsorted_i, max_length_seconds in sorted_max_length_seconds:
 
             if exists(max_length_seconds):
                 audio_length = temp_data.size(1)
@@ -342,7 +342,7 @@ class PreprocessedDataset(Dataset):
         assert len(set(lengths)) == 1, 'audio lengths are not equal'
 
         return lengths[0]
-    
+
     def get_clap_tokens(self, clap_token_ids, start_idx):
         """aggregate clap token over entire context with a sliding"""
         return clap_token_ids[start_idx].unsqueeze(0)
@@ -360,7 +360,7 @@ class PreprocessedDataset(Dataset):
     def compute_crop_indices(self, audio_length, outside_window, inside_window=None):
         outside_start_idx = random.randint(0, audio_length - outside_window)
         outside_end_idx = outside_start_idx + outside_window
-        
+
         if exists(inside_window):
             inside_start_idx = random.randint(outside_start_idx, outside_end_idx - inside_window)
             inside_end_idx = inside_start_idx + inside_window
@@ -393,9 +393,9 @@ class PreprocessedDataset(Dataset):
             clap_token_ids, semantic_token_ids = self.cursor.execute(f'SELECT clap, semantic FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
             clap_token_ids, semantic_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(semantic_token_ids.astype(np.int32))
 
-            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids) 
+            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids)
 
-            outside_start_idx, outside_end_idx, _, _ = self.compute_crop_indices(audio_length, self.semantic_window_seconds) 
+            outside_start_idx, outside_end_idx, _, _ = self.compute_crop_indices(audio_length, self.semantic_window_seconds)
 
             clap_token_ids = self.get_clap_tokens(clap_token_ids, outside_start_idx)
             semantic_token_ids = self.crop_semantic_tokens(semantic_token_ids, outside_start_idx, outside_end_idx)
@@ -403,22 +403,22 @@ class PreprocessedDataset(Dataset):
             return (clap_token_ids, semantic_token_ids)
         elif self.stage == 'coarse':
             clap_token_ids, semantic_token_ids, coarse_token_ids = self.cursor.execute(f'SELECT clap, semantic, coarse FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
-            clap_token_ids, semantic_token_ids, coarse_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(semantic_token_ids.astype(np.int32)), torch.from_numpy(coarse_token_ids.astype(np.int32)) 
+            clap_token_ids, semantic_token_ids, coarse_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(semantic_token_ids.astype(np.int32)), torch.from_numpy(coarse_token_ids.astype(np.int32))
 
-            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids, coarse_token_ids=coarse_token_ids) 
+            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, semantic_token_ids=semantic_token_ids, coarse_token_ids=coarse_token_ids)
 
             outside_start_idx, outside_end_idx, inside_start_idx, inside_end_idx = self.compute_crop_indices(audio_length, self.semantic_window_seconds, self.coarse_window_seconds)
 
-            clap_token_ids = self.get_clap_tokens(clap_token_ids, outside_start_idx) 
+            clap_token_ids = self.get_clap_tokens(clap_token_ids, outside_start_idx)
             semantic_token_ids = self.crop_semantic_tokens(semantic_token_ids, inside_start_idx, inside_end_idx)
             coarse_token_ids = self.crop_acoustic_tokens(coarse_token_ids, inside_start_idx, inside_end_idx)
 
             return (clap_token_ids, semantic_token_ids, coarse_token_ids)
         elif self.stage == 'fine':
             clap_token_ids, coarse_token_ids, fine_token_ids = self.cursor.execute(f'SELECT clap, coarse, fine FROM tokens where idx = ?', (sqlite_idx,)).fetchone()
-            clap_token_ids, coarse_token_ids, fine_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(coarse_token_ids.astype(np.int32)), torch.from_numpy(fine_token_ids.astype(np.int32)) 
+            clap_token_ids, coarse_token_ids, fine_token_ids = torch.from_numpy(clap_token_ids.astype(np.int32)), torch.from_numpy(coarse_token_ids.astype(np.int32)), torch.from_numpy(fine_token_ids.astype(np.int32))
 
-            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, coarse_token_ids=coarse_token_ids, fine_token_ids=fine_token_ids) 
+            audio_length = self.get_and_assert_audio_length_from_tokens(clap_token_ids=clap_token_ids, coarse_token_ids=coarse_token_ids, fine_token_ids=fine_token_ids)
 
             outside_start_idx, outside_end_idx, inside_start_idx, inside_end_idx = self.compute_crop_indices(audio_length, self.semantic_window_seconds, self.fine_window_seconds)
 

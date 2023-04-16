@@ -52,10 +52,10 @@ if __name__ == '__main__':
     semantic_transformer = create_semantic_transformer_from_config(model_config, args.fine_tune_from, device)
 
     trainer = create_single_stage_trainer_from_config(
-        model_config=model_config, 
+        model_config=model_config,
         training_config=training_config,
         stage='semantic',
-        results_folder=args.results_folder, 
+        results_folder=args.results_folder,
         transformer=semantic_transformer,
         clap=clap,
         wav2vec=wav2vec,

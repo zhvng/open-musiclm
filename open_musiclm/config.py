@@ -156,7 +156,7 @@ class MusicLMTrainingConfig:
     coarse_trainer_cfg: SingleStageTrainerConfig
     fine_trainer_cfg: SingleStageTrainerConfig
     data_preprocessor_cfg: DataPreprocessorConfig
-    
+
 
 @beartype_jit
 def load_model_config(config_path: str) -> MusicLMModelConfig:
@@ -355,7 +355,7 @@ def create_single_stage_trainer_from_config(
     config_paths: Optional[List[str]] = None,
     **kwargs,
 ) -> SingleStageTrainer:
-    
+
     semantic_audio_length_seconds = model_config.global_cfg.semantic_audio_length_seconds
     coarse_audio_length_seconds = model_config.global_cfg.coarse_audio_length_seconds
     fine_audio_length_seconds = model_config.global_cfg.fine_audio_length_seconds
@@ -369,7 +369,7 @@ def create_single_stage_trainer_from_config(
     elif stage == 'fine':
         trainer_cfg = training_config.fine_trainer_cfg
         data_max_length_seconds = (semantic_audio_length_seconds, fine_audio_length_seconds)
-    
+
     trainer = SingleStageTrainer(
         model_config=model_config,
         training_config=training_config,

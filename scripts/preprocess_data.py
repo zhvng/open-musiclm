@@ -61,11 +61,11 @@ if __name__ == '__main__':
         ignore_files = None
 
     processor = create_data_preprocessor_from_config(
-        model_config, 
-        training_config, 
-        clap, 
+        model_config,
+        training_config,
+        clap,
         wav2vec,
-        encodec_wrapper, 
+        encodec_wrapper,
         device,
         config_paths=[args.model_config, args.training_config],
         ignore_files=ignore_files)

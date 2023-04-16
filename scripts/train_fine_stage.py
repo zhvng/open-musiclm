@@ -29,7 +29,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     validate_train_args(args)
- 
+
     model_config = load_model_config(args.model_config)
     training_config = load_training_config(args.training_config)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -50,10 +50,10 @@ if __name__ == '__main__':
     fine_transformer = create_fine_transformer_from_config(model_config, args.fine_tune_from, device)
 
     trainer = create_single_stage_trainer_from_config(
-        model_config=model_config, 
+        model_config=model_config,
         training_config=training_config,
         stage='fine',
-        results_folder=args.results_folder, 
+        results_folder=args.results_folder,
         transformer=fine_transformer,
         clap=clap,
         wav2vec=None,

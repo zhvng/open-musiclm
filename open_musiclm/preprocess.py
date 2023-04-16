@@ -158,7 +158,7 @@ class DataPreprocessor(nn.Module):
             ignore_load_errors=ignore_load_errors,
             ignore_files=ignore_files,
         )
-        
+
         # dataloader
 
         self.dl = get_sound_preprocessing_dataloader(self.ds, batch_size=1, shuffle=False)
@@ -186,7 +186,7 @@ class DataPreprocessor(nn.Module):
         if self.is_main:
             if len([*self.results_folder.glob('**/*')]) > 0 and yes_or_no('do you want to clear previous experiment checkpoints and results?'):
                 rmtree(str(self.results_folder))
-            
+
             self.results_folder.mkdir(parents=True, exist_ok=True)
 
         if self.is_main and exists(config_paths):

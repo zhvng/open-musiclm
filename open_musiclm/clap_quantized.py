@@ -98,7 +98,7 @@ def create_clap_quantized(
 ):
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        
+
     clap = CLAP_Module(enable_fusion=enable_fusion, device=device, amodel=amodel_type)
     clap.load_ckpt(ckpt=checkpoint_path)
 
