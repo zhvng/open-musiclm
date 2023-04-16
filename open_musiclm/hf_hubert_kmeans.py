@@ -89,7 +89,7 @@ class HfHubertWithKmeans(nn.Module):
 
         if flatten:
             return codebook_indices
-        
+
         codebook_indices, = unpack(codebook_indices, packed_shape, '*')
         return codebook_indices
 

@@ -33,7 +33,7 @@ class TokenSequenceInfo():
 class TokenConditionedTransformer(nn.Module):
     """
     Combination of the SemanticTransformer, CoarseTransformer and FineTransformer in lucidrain's AudioLM implementation.
-    Can handle a variable number of token sequences, each with their own parameters. 
+    Can handle a variable number of token sequences, each with their own parameters.
     https://github.com/lucidrains/audiolm-pytorch/blob/main/audiolm_pytorch/audiolm_pytorch.py
     """
     # TODO: Add in text conditioning for parity with AudioLM. Not important for MusicLM though.
@@ -64,7 +64,7 @@ class TokenConditionedTransformer(nn.Module):
         self.logit_weights = torch.nn.ParameterList()
         self.embeddings = torch.nn.ModuleList()
         self.eos_ids = []
-        
+
         for sequence in token_sequences:
             self.start_tokens.append(nn.Parameter(torch.randn(dim)))
             self.eos_ids.append(sequence.codebook_size)
@@ -139,7 +139,7 @@ class TokenConditionedTransformer(nn.Module):
         all_pred_tokens = torch.tensor_split(tokens, split_at, dim=1)
 
         # strip next start token from end of every sequence besides last
-        # in tokens: s1 t1 t2 t3 t4 .. e1   s2 t1 t2 t3 t4 e2 
+        # in tokens: s1 t1 t2 t3 t4 .. e1   s2 t1 t2 t3 t4 e2
         # out logit: t1 t2 t3 t4 .. e1 s2   t1 t2 t3 t4 e2
         # split:    [t1 t2 t3 t4 .. e1 s2] [t1 t2 t3 t4 e2]
         all_pred_tokens = [pred_tokens[:, :-1] for pred_tokens in all_pred_tokens[:-1]] + [all_pred_tokens[-1]]
@@ -330,7 +330,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
         if self.training:
             assert not input_has_eos, "train sequences (from clap, wav2vec, etc.) shouldn't come with an eos token"
-        
+
         # append eos to sequences if not already there
         if not input_has_eos:
             all_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(all_token_ids, self.eos_ids)]
@@ -390,7 +390,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
                 loss = F.cross_entropy(
                     logits,
                     labels,
-                    ignore_index=self.pad_id if unique_consecutive else -100 
+                    ignore_index=self.pad_id if unique_consecutive else -100
                 )
 
             total_logits += num_logits
@@ -666,7 +666,7 @@ class CoarseStage(nn.Module):
             assert exists(self.neural_codec)
             wave = self.neural_codec.decode_from_codebook_indices(sampled_tokens)
             return rearrange(wave, 'b 1 n -> b n')
-        
+
         return sampled_tokens
 
     def forward(
@@ -770,7 +770,7 @@ class FineStage(nn.Module):
             coarse_and_fine_ids = torch.cat((coarse_token_ids, sampled_tokens), dim = -1)
             wave = self.neural_codec.decode_from_codebook_indices(coarse_and_fine_ids)
             return rearrange(wave, 'b 1 n -> b n')
-        
+
         return sampled_tokens
 
     def forward(
@@ -832,8 +832,8 @@ class MusicLM(nn.Module):
             wav2vec=wav2vec,
             clap=clap,
             neural_codec=neural_codec
-        )        
-        
+        )
+
         self.fine = FineStage(
             fine_transformer=fine_transformer,
             clap=clap,
@@ -891,7 +891,7 @@ class MusicLM(nn.Module):
             pred_semantic_token_ids = pred_semantic_token_ids[:, condition_length:]
             all_semantic_token_ids = torch.cat([all_semantic_token_ids, pred_semantic_token_ids], dim=1)
 
-        # sliding windows of coarse window size 
+        # sliding windows of coarse window size
         window_size = int(coarse_window_seconds * semantic_steps_per_second - 1)
         step_size = int(window_size * coarse_sliding_window_step_percent)
         all_semantic_token_ids = all_semantic_token_ids.unfold(1, window_size, step_size)
@@ -926,7 +926,7 @@ class MusicLM(nn.Module):
             wave = rearrange(wave, 'b 1 n -> b n')
             return wave
 
-        # crop to fine window length and iterate 
+        # crop to fine window length and iterate
         fine_window_size = int(fine_window_seconds * acoustic_steps_per_second)
         fine_step_size = int(fine_window_size * fine_sliding_window_step_percent)
         all_coarse_token_ids_unfolded = all_coarse_token_ids.unfold(1, fine_window_size, fine_step_size)

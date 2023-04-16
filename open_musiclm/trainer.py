@@ -70,10 +70,10 @@ def accum_log(log, new_logs):
 def sanitize_hparams(hps):
     for key, value in hps.items():
         if not (
-            isinstance(value, int) or 
-            isinstance(value, float) or 
-            isinstance(value, str) or 
-            isinstance(value, bool) or 
+            isinstance(value, int) or
+            isinstance(value, float) or
+            isinstance(value, str) or
+            isinstance(value, bool) or
             isinstance(value, torch.Tensor)
         ):
             hps[key] = str(value)
@@ -367,7 +367,7 @@ class SingleStageTrainer(nn.Module):
             assert exists(scheduler_path)
             scheduler_state_dict = self.scheduler.state_dict()
             torch.save(scheduler_state_dict, scheduler_path)
-      
+
     def load(self, model_path, optim_path, scheduler_path=None, steps=0):
         model_path = Path(model_path)
         optim_path = Path(optim_path)
@@ -431,7 +431,7 @@ class SingleStageTrainer(nn.Module):
             while non_empty_batch is False:
                 if len(data_kwargs) == 0:
                     continue
-                
+
                 non_empty_batch = True
 
                 loss, _, _ = self.train_wrapper(**data_kwargs, return_loss=True)
@@ -460,9 +460,9 @@ class SingleStageTrainer(nn.Module):
                 data_kwargs = dict(zip(self.ds_fields, next(self.valid_dl_iter)))
                 if len(data_kwargs) == 0:
                     continue
-                
+
                 non_empty_batch = True
-                
+
                 with torch.no_grad():
                     self.train_wrapper.eval()
                     valid_loss, all_logits, all_labels = self.accelerator.unwrap_model(self.train_wrapper)(**data_kwargs, return_loss=True)
@@ -490,7 +490,7 @@ class SingleStageTrainer(nn.Module):
                     np.savetxt(str(self.tokens_folder / f'{self.stage}.tokens.{steps}.txt'), interleave, fmt='%-6s', header='predicted and ground truth tokens from the validation set. row 0%2 is predicted, 1%2 is ground truth\n ')
 
                 if self.is_main and self.save_reconstructed_wave and (self.stage == 'coarse' or self.stage=='fine'):
-                    # For coarse and fine stages, reconstruct teacher-forced wave from logits 
+                    # For coarse and fine stages, reconstruct teacher-forced wave from logits
 
                     assert exists(self.neural_codec)
                     assert exists(self.waves_folder)
@@ -506,7 +506,7 @@ class SingleStageTrainer(nn.Module):
                         coarse_quantizers = self.transformer.token_sequences[-2].num_quantizers
                         coarse_tokens = rearrange(coarse_tokens, 'b (n q) -> b n q', q=coarse_quantizers)
                         pred_tokens = torch.cat((coarse_tokens, pred_tokens), dim=-1)
-                    
+
                     waves = self.neural_codec.decode_from_codebook_indices(pred_tokens)
                     waves = waves.cpu()
 
@@ -547,7 +547,7 @@ class SingleStageTrainer(nn.Module):
             if exists(self.audio_conditioner) and self.audio_conditioner.learn_rvq:
                 rvq_state_dict = self.audio_conditioner.rq.state_dict()
                 torch.save(rvq_state_dict, str(self.results_folder / f'{self.stage}.conditioner_rvq.{steps}.pt'))
-                
+
         self.steps += 1
         return logs
 
@@ -571,7 +571,7 @@ class ClapRVQTrainer(nn.Module):
         *,
         num_train_steps,
         batch_size,
-        accumulate_batches: Optional[int] = None, 
+        accumulate_batches: Optional[int] = None,
         audio_conditioner: Optional[ClapQuantized] = None,
         dataset: Optional[Dataset] = None,
         ignore_files: Optional[List[str]]=None,
@@ -653,12 +653,12 @@ class ClapRVQTrainer(nn.Module):
             rmtree(str(self.results_folder))
 
         self.results_folder.mkdir(parents=True, exist_ok=True)
-        
+
         hps = {"num_train_steps": num_train_steps, "batch_size": batch_size, "accumulate_batches": accumulate_batches}
 
         if 'tensorboard' in self.log_with:
             self.accelerator.init_trackers(f"clap_rvq_{int(time.time() * 1000)}", config=hps)
-        else: 
+        else:
             self.accelerator.init_trackers(f"clap_rvq", config=hps)
 
         if self.is_main and exists(config_paths):
@@ -690,7 +690,7 @@ class ClapRVQTrainer(nn.Module):
         steps = int(self.steps.item())
 
         self.audio_conditioner.learn_rvq = True
-    
+
         iters = default(self.accumulate_batches, 1)
         iters = math.ceil(iters / self.accelerator.num_processes)
 
@@ -699,7 +699,7 @@ class ClapRVQTrainer(nn.Module):
             raw_wave_for_clap = next(self.dl_iter)[0]
             embed = self.audio_conditioner.forward(audio_input=raw_wave_for_clap.to(self.device), return_embedding=True)
             embeds.append(embed)
-        
+
         embeds = torch.cat(embeds, dim=0)
         embeds = self.accelerator.gather_for_metrics(embeds)
 

@@ -11,7 +11,7 @@ python scripts/infer_coarse.py \
     ./data/fma_large/000/000005.mp3 \
     ./data/fma_large/000/000010.mp3 \
     --model_config ./configs/model/musiclm_small.json \
-    --coarse_path ./results/coarse_continue_1/coarse.transformer.10000.pt 
+    --coarse_path ./results/coarse_continue_1/coarse.transformer.10000.pt
 
 '''
 
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', default=0)
 
     args = parser.parse_args()
-    
+
     model_config = load_model_config(args.model_config)
 
     audio_files = args.audio_files
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
 
     print('loading audio from dataset')
-    
+
     audios_for_clap = []
     audios_for_wav2vec = []
     for audio_path in audio_files:

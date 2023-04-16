@@ -24,8 +24,8 @@ from open_musiclm.config import load_model_config, create_musiclm_from_config
 prompts = [
     [
         'The main soundtrack of an arcade game. It is fast-paced and upbeat, with a catchy electric guitar riff. The music is repetitive and easy to remember, but with unexpected sounds, like cymbal crashes or drum rolls.',
-        'A fusion of reggaeton and electronic dance music, with a spacey, otherworldly sound. Induces the experience of being lost in space, and the music would be designed to evoke a sense of wonder and awe, while being danceable.', 
-        'A rising synth is playing an arpeggio with a lot of reverb. It is backed by pads, sub bass line and soft drums. This song is full of synth sounds creating a soothing and adventurous atmosphere. It may be playing at a festival during two songs for a buildup.', 
+        'A fusion of reggaeton and electronic dance music, with a spacey, otherworldly sound. Induces the experience of being lost in space, and the music would be designed to evoke a sense of wonder and awe, while being danceable.',
+        'A rising synth is playing an arpeggio with a lot of reverb. It is backed by pads, sub bass line and soft drums. This song is full of synth sounds creating a soothing and adventurous atmosphere. It may be playing at a festival during two songs for a buildup.',
         'Slow tempo, bass-and-drums-led reggae song. Sustained electric guitar. High-pitched bongos with ringing tones. Vocals are relaxed with a laid-back feel, very expressive.',
     ],
     ['song with synths and flute', 'crowd cheering', 'piano sonata waltz, glittery', 'house song, 4 on the floor, rhythm'],
@@ -78,11 +78,11 @@ if __name__ == '__main__':
 
     for prompt in prompts:
         generated_wave = musiclm.forward(
-            text=prompt, 
+            text=prompt,
             output_seconds=duration,
-            semantic_window_seconds=model_config.global_cfg.semantic_audio_length_seconds, 
-            coarse_window_seconds=model_config.global_cfg.coarse_audio_length_seconds, 
-            fine_window_seconds=model_config.global_cfg.fine_audio_length_seconds, 
+            semantic_window_seconds=model_config.global_cfg.semantic_audio_length_seconds,
+            coarse_window_seconds=model_config.global_cfg.coarse_audio_length_seconds,
+            fine_window_seconds=model_config.global_cfg.fine_audio_length_seconds,
             semantic_steps_per_second=model_config.hubert_kmeans_cfg.output_hz,
             acoustic_steps_per_second=model_config.encodec_cfg.output_hz,
             return_coarse_generated_wave=return_coarse_wave,
