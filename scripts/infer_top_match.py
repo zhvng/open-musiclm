@@ -17,6 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('prompt', help='prompts to generate audio for', type=str, nargs='+')
     parser.add_argument('--num_samples', default=4, type=int)
     parser.add_argument('--num_top_matches', default=1, type=int)
+    parser.add_argument('--input_audio', default=None, type=str, help='input audio to condition on and generate continuations from')
     parser.add_argument('--model_config', default='./configs/model/musiclm_small.json', help='path to model config')
     parser.add_argument('--semantic_path', required=True, help='path to semantic stage checkpoint')
     parser.add_argument('--coarse_path', required=True, help='path to coarse stage checkpoint')
@@ -35,6 +36,7 @@ if __name__ == '__main__':
     semantic_path = args.semantic_path
     coarse_path = args.coarse_path
     fine_path = args.fine_path
+    input_audio = args.input_audio
     return_coarse_wave = args.return_coarse_wave
     duration = args.duration
     kmeans_path = args.kmeans_path
@@ -59,8 +61,15 @@ if __name__ == '__main__':
 
     print(f'prompt: {args.prompt}')
 
+    prime_wave, prime_wave_sample_hz = None, None
+    if input_audio is not None:
+        prime_wave, prime_wave_sample_hz = torchaudio.load(input_audio)
+        prime_wave = prime_wave.to(device)
+
     generated_wave, similarities = musiclm.generate_top_match(
         text=args.prompt,
+        prime_wave=prime_wave,
+        prime_wave_sample_hz=prime_wave_sample_hz,
         num_samples=args.num_samples,
         num_top_matches=args.num_top_matches,
         output_seconds=duration,
