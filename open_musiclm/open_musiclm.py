@@ -17,7 +17,7 @@ from .utils import (all_rows_have_eos_id, append_eos_id,
                     eval_decorator, exists, float32_to_int16,
                     generate_mask_with_prob, get_embeds, gumbel_sample,
                     int16_to_float32, mask_out_after_eos_id,
-                    round_down_nearest_multiple, top_k)
+                    round_down_nearest_multiple, top_k, prepare_audio)
 
 
 @dataclass
@@ -855,6 +855,7 @@ class MusicLM(nn.Module):
         *,
         text: Optional[List[str]] = None,
         prime_wave=None,
+        prime_wave_sample_hz=None,
         output_seconds=8,
         semantic_window_seconds=10,
         coarse_window_seconds=4,
@@ -871,8 +872,53 @@ class MusicLM(nn.Module):
 
         clap_token_ids = get_or_compute_clap_token_ids(None, self.clap, conditioning_audio=None, conditioning_text=text)
 
+        # compute everything we need for audio continuation
+
+        all_audio_condition_coarse_token_ids = None
+        all_audio_condition_fine_token_ids = None
+        audio_condition_semantic_token_ids = None
+        audio_condition_coarse_token_ids = None
+        audio_condition_fine_token_ids = None
+        semantic_token_adjustment = 0 # used to crop generated semantic tokens so first sequence lines up with first coarse tokens sequence
+        coarse_token_adjustment = 0
+        fine_token_adjustment = 0
+        if exists(prime_wave):
+            assert exists(prime_wave_sample_hz)
+            prime_wave_wav2vec = prepare_audio(
+                prime_wave,
+                prime_wave_sample_hz,
+                self.wav2vec.target_sample_hz,
+                normalize=True,
+                target_length_seconds=semantic_window_seconds)
+            prime_wave_encodec = prepare_audio(
+                prime_wave,
+                prime_wave_sample_hz,
+                self.neural_codec.sample_rate,
+                normalize=False,
+                target_length_seconds=semantic_window_seconds)
+
+            condition_semantic_token_ids = get_or_compute_semantic_token_ids(None, prime_wave_wav2vec, self.wav2vec)
+            condition_coarse_token_ids, condition_fine_token_ids = get_or_compute_acoustic_token_ids(None, None, prime_wave_encodec, self.neural_codec, self.coarse.transformer_wrapper.token_sequences[2].num_quantizers)
+            condition_semantic_length = int(semantic_steps_per_second * semantic_window_seconds * (1 - semantic_sliding_window_step_percent))
+            condition_coarse_length = int(acoustic_steps_per_second * coarse_window_seconds * (1 - coarse_sliding_window_step_percent))
+            condition_fine_length = int(acoustic_steps_per_second * fine_window_seconds * (1 - fine_sliding_window_step_percent))
+
+            all_audio_condition_coarse_token_ids = condition_coarse_token_ids
+            all_audio_condition_fine_token_ids = condition_fine_token_ids
+
+            audio_condition_semantic_token_ids = condition_semantic_token_ids[:, -condition_semantic_length:] if condition_semantic_token_ids.shape[1] >= condition_semantic_length else condition_semantic_token_ids
+            audio_condition_coarse_token_ids = condition_coarse_token_ids[:, -condition_coarse_length:]
+            audio_condition_fine_token_ids = condition_fine_token_ids[:, -condition_fine_length:] if condition_fine_length > 0 else None
+
+            semantic_token_adjustment = condition_semantic_length - int(semantic_steps_per_second * coarse_window_seconds * (1 - coarse_sliding_window_step_percent))
+            coarse_token_adjustment = condition_coarse_length - int(acoustic_steps_per_second * fine_window_seconds * (1 - fine_sliding_window_step_percent))
+            fine_token_adjustment = condition_fine_length
+
+        # semantic stage
+
         all_semantic_token_ids = self.semantic.generate(
             clap_token_ids=clap_token_ids,
+            semantic_token_ids=audio_condition_semantic_token_ids,
             max_time_steps=int(min(output_seconds, semantic_window_seconds) * semantic_steps_per_second),
             include_eos_in_output=False,
             append_eos_to_conditioning_tokens=True,
@@ -891,7 +937,11 @@ class MusicLM(nn.Module):
             pred_semantic_token_ids = pred_semantic_token_ids[:, condition_length:]
             all_semantic_token_ids = torch.cat([all_semantic_token_ids, pred_semantic_token_ids], dim=1)
 
-        # sliding windows of coarse window size
+        # crop semantic tokens to line up with coarse tokens
+        all_semantic_token_ids = all_semantic_token_ids[:, semantic_token_adjustment:]
+
+        # coarse stage
+
         window_size = int(coarse_window_seconds * semantic_steps_per_second - 1)
         step_size = int(window_size * coarse_sliding_window_step_percent)
         all_semantic_token_ids = all_semantic_token_ids.unfold(1, window_size, step_size)
@@ -899,10 +949,11 @@ class MusicLM(nn.Module):
 
         all_coarse_token_ids = None
         for semantic_token_ids in all_semantic_token_ids:
-            # TODO: pad to coarse_window_seconds if needed
-
-            condition_length = int(coarse_window_seconds * acoustic_steps_per_second * (1 - coarse_sliding_window_step_percent))
-            condition_coarse_token_ids = all_coarse_token_ids[:, -condition_length:] if exists(all_coarse_token_ids) else None
+            if exists(all_coarse_token_ids):
+                condition_length = int(coarse_window_seconds * acoustic_steps_per_second * (1 - coarse_sliding_window_step_percent))
+                condition_coarse_token_ids = all_coarse_token_ids[:, -condition_length:]
+            else:
+                condition_coarse_token_ids = audio_condition_coarse_token_ids
 
             pred_coarse_token_ids = self.coarse.generate(
                 clap_token_ids=clap_token_ids,
@@ -926,7 +977,11 @@ class MusicLM(nn.Module):
             wave = rearrange(wave, 'b 1 n -> b n')
             return wave
 
-        # crop to fine window length and iterate
+        # crop coarse tokens to line up with fine tokens
+        all_coarse_token_ids = all_coarse_token_ids[:, coarse_token_adjustment:]
+
+        # fine stage
+
         fine_window_size = int(fine_window_seconds * acoustic_steps_per_second)
         fine_step_size = int(fine_window_size * fine_sliding_window_step_percent)
         all_coarse_token_ids_unfolded = all_coarse_token_ids.unfold(1, fine_window_size, fine_step_size)
@@ -934,10 +989,12 @@ class MusicLM(nn.Module):
 
         all_fine_token_ids = None
         for coarse_token_ids in all_coarse_token_ids_unfolded:
+            if exists(all_fine_token_ids):
+                condition_length = int(fine_window_size * (1 - fine_sliding_window_step_percent))
+                condition_fine_token_ids = all_fine_token_ids[:, -condition_length:] if condition_length > 0 else None
+            else:
+                condition_fine_token_ids = audio_condition_fine_token_ids
 
-            condition_length = int(fine_window_size * (1 - fine_sliding_window_step_percent))
-            condition_fine_token_ids = all_fine_token_ids[:, -condition_length:] if exists(
-                all_fine_token_ids) and condition_length > 0 else None
             pred_fine_token_ids = self.fine.generate(
                 clap_token_ids=clap_token_ids,
                 coarse_token_ids=coarse_token_ids,
@@ -953,6 +1010,13 @@ class MusicLM(nn.Module):
             else:
                 pred_fine_token_ids = pred_fine_token_ids[:, condition_length:]
                 all_fine_token_ids = torch.cat([all_fine_token_ids, pred_fine_token_ids], dim=1)
+
+        # crop fine tokens to remove conditioning audio
+        all_fine_token_ids = all_fine_token_ids[:, fine_token_adjustment:]
+
+        if exists(all_audio_condition_coarse_token_ids) and exists(all_audio_condition_fine_token_ids):
+            all_fine_token_ids = torch.cat([all_audio_condition_fine_token_ids, all_fine_token_ids], dim=1)
+            all_coarse_token_ids = torch.cat([all_audio_condition_coarse_token_ids, all_coarse_token_ids], dim=1)
 
         all_acoustic_token_ids = torch.cat([all_coarse_token_ids, all_fine_token_ids], dim=-1)
         wave = self.neural_codec.decode_from_codebook_indices(all_acoustic_token_ids)

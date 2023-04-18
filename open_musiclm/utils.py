@@ -6,6 +6,7 @@ from beartype import beartype
 from pathlib import Path
 import shutil
 import os
+from torchaudio.functional import resample
 
 from einops import rearrange, repeat, reduce
 
@@ -152,6 +153,17 @@ def float32_to_int16(x):
 
 def zero_mean_unit_var_norm(x):
     return (x - x.mean(dim=-1, keepdim=True)) / torch.sqrt(x.var(dim=-1, keepdim=True) + 1e-7)
+
+def prepare_audio(data, sample_hz, target_sample_hz, normalize=True, target_length_seconds=None):
+    if data.shape[0] > 1:
+        data = torch.mean(data, dim=0).unsqueeze(0)
+    if normalize:
+        data = zero_mean_unit_var_norm(data)
+    if exists(target_length_seconds) and data.shape[1] > target_length_seconds * sample_hz:
+        data = data[: , :int(target_length_seconds * sample_hz)]
+    audio_for_wav2vec = resample(data, sample_hz, target_sample_hz)
+    audio_for_wav2vec = int16_to_float32(float32_to_int16(audio_for_wav2vec))
+    return audio_for_wav2vec
 
 # helper for saving config
 
