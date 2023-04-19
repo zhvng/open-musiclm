@@ -181,7 +181,6 @@ class SingleStageTrainer(nn.Module):
             else:
                 self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic')
                 target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz)
-                normalize = (False, True)
                 seq_len_multiple_of = wav2vec.seq_len_multiple_of
         elif stage == 'coarse':
             assert self.use_preprocessed_data or (exists(wav2vec) and exists(audio_conditioner) and exists(neural_codec))
@@ -197,7 +196,6 @@ class SingleStageTrainer(nn.Module):
             else:
                 self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_semantic', 'raw_wave_for_acoustic')
                 target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz, neural_codec.sample_rate)
-                normalize = (False, True, False)
                 seq_len_multiple_of = wav2vec.seq_len_multiple_of
         elif stage == 'fine':
             assert self.use_preprocessed_data or (exists(audio_conditioner) and exists(neural_codec))
@@ -212,7 +210,6 @@ class SingleStageTrainer(nn.Module):
             else:
                 self.ds_fields = ('raw_wave_for_clap', 'raw_wave_for_acoustic')
                 target_sample_hz = (audio_conditioner.sample_rate, neural_codec.sample_rate)
-                normalize = (False, False)
                 seq_len_multiple_of = None
         else:
             raise ValueError(f'invalid stage: {stage}')
@@ -260,7 +257,6 @@ class SingleStageTrainer(nn.Module):
                 self.ds = SoundDataset(
                     folder,
                     max_length_seconds=data_max_length_seconds,
-                    normalize=normalize,
                     target_sample_hz=target_sample_hz,
                     seq_len_multiple_of=seq_len_multiple_of,
                     ignore_files=default(ignore_files, []),
@@ -781,7 +777,6 @@ class HfHubertKmeansTrainer(nn.Module):
             self.ds = SoundDataset(
                 folder,
                 max_length_seconds=data_max_length_seconds,
-                normalize=True,
                 target_sample_hz=hubert_kmeans.target_sample_hz,
                 seq_len_multiple_of=hubert_kmeans.seq_len_multiple_of,
                 ignore_files=default(ignore_files, []),

@@ -888,13 +888,11 @@ class MusicLM(nn.Module):
                 prime_wave,
                 prime_wave_sample_hz,
                 self.wav2vec.target_sample_hz,
-                normalize=True,
                 target_length_seconds=semantic_window_seconds)
             prime_wave_encodec = prepare_audio(
                 prime_wave,
                 prime_wave_sample_hz,
                 self.neural_codec.sample_rate,
-                normalize=False,
                 target_length_seconds=semantic_window_seconds)
 
             condition_semantic_token_ids = get_or_compute_semantic_token_ids(None, prime_wave_wav2vec, self.wav2vec)
@@ -1048,7 +1046,6 @@ class MusicLM(nn.Module):
             text_latents = repeat(text_latents, 'b d -> (repeat b) d', repeat=num_samples)
 
             clap_input = resample(samples, self.neural_codec.sample_rate, self.clap.sample_rate)
-            clap_input = int16_to_float32(float32_to_int16(clap_input))
             audio_latents = self.clap(audio_input=clap_input, return_embedding=True)
 
             sim = F.cosine_similarity(text_latents, audio_latents, dim=-1)

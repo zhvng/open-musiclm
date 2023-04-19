@@ -10,7 +10,7 @@ from transformers import RobertaTokenizer
 from vector_quantize_pytorch import ResidualVQ
 
 from .laion_clap import CLAP_Module
-from .utils import exists, beartype_jit
+from .utils import exists, beartype_jit, int16_to_float32, float32_to_int16
 
 
 @beartype_jit
