@@ -31,7 +31,8 @@ class ClapRVQConfig:
 @dataclass
 class HubertKmeansConfig:
     model_name: str
-    normalize_embeds: bool
+    normalize_input: bool = True
+    normalize_embeds: bool = True
     embed_layer: int = 7
     target_sample_hz: int = 16000
     seq_len_multiple_of: int = 320

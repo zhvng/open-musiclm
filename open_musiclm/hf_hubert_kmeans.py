@@ -30,6 +30,7 @@ class HfHubertWithKmeans(nn.Module):
         embed_layer: int=7,
         target_sample_hz=16000,
         seq_len_multiple_of=int(16000 / 50),
+        normalize_input=True,
         normalize_embeds=True,
         codebook_size: int=1024,
         output_hz: int=50
@@ -44,6 +45,7 @@ class HfHubertWithKmeans(nn.Module):
         if exists(kmeans):
             assert self.codebook_size == kmeans.n_clusters, "codebook_size must match kmeans.n_clusters"
 
+        self.normalize_input = normalize_input
         self.normalize_embeds = normalize_embeds
 
         self.embed_layer = embed_layer
@@ -68,6 +70,9 @@ class HfHubertWithKmeans(nn.Module):
 
         if exists(self.seq_len_multiple_of):
             wav_input = curtail_to_multiple(wav_input, self.seq_len_multiple_of)
+
+        if self.normalize_input:
+            wav_input = zero_mean_unit_var_norm(wav_input)
 
         hubert_args = {
             'input_values': wav_input,
