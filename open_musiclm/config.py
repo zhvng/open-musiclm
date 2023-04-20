@@ -31,6 +31,7 @@ class ClapRVQConfig:
 @dataclass
 class HubertKmeansConfig:
     model_name: str
+    context_window_seconds: Optional[float] = None
     normalize_input: bool = True
     normalize_embeds: bool = True
     embed_layer: int = 7

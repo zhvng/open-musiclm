@@ -33,13 +33,15 @@ class HfHubertWithKmeans(nn.Module):
         normalize_input=True,
         normalize_embeds=True,
         codebook_size: int=1024,
-        output_hz: int=50
+        output_hz: int=50,
+        context_window_seconds: Optional[float]=None
     ):
         super().__init__()
         self.target_sample_hz = target_sample_hz
         self.output_hz = output_hz
         self.seq_len_multiple_of = seq_len_multiple_of
         self.codebook_size = kmeans.n_clusters if exists(kmeans) else None
+        self.context_window_seconds = context_window_seconds
 
         self.codebook_size = codebook_size
         if exists(kmeans):
@@ -68,6 +70,14 @@ class HfHubertWithKmeans(nn.Module):
         if exists(input_sample_hz):
             wav_input = resample(wav_input, input_sample_hz, self.target_sample_hz)
 
+        if exists(self.context_window_seconds):
+            target_length = int(self.context_window_seconds * self.target_sample_hz)
+            wav_input = list(wav_input.split(target_length, dim=-1))
+            wav_input[-1] = torch.nn.functional.pad(wav_input[-1], (0, target_length - wav_input[-1].shape[-1]))
+            wav_input, packed_wav_input_shape = pack(wav_input, '* d')
+        else:
+            packed_wav_input_shape = None
+
         if exists(self.seq_len_multiple_of):
             wav_input = curtail_to_multiple(wav_input, self.seq_len_multiple_of)
 
@@ -81,6 +91,10 @@ class HfHubertWithKmeans(nn.Module):
 
         outputs = self.hubert(**hubert_args, output_hidden_states = True)
         embed = outputs.hidden_states[self.embed_layer]
+
+        if exists(packed_wav_input_shape):
+            embed = unpack(embed, packed_wav_input_shape, '* t d')
+            embed = torch.cat(embed, dim=1)
 
         if self.normalize_embeds:
             embed = zero_mean_unit_var_norm(embed)
