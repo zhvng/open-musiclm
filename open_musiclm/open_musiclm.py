@@ -860,7 +860,7 @@ class MusicLM(nn.Module):
         semantic_window_seconds=10,
         coarse_window_seconds=4,
         fine_window_seconds=2,
-        semantic_steps_per_second=50, # Note: for MERTv0 its actually 50 * seconds - 1
+        semantic_steps_per_second=50, # e.g. for MERTv0 its 50 / bin_size
         acoustic_steps_per_second=75, # 75 for encodec, 50 for soundstream
         return_coarse_generated_wave=False,
         mask_out_generated_fine_tokens=False,
@@ -940,7 +940,7 @@ class MusicLM(nn.Module):
 
         # coarse stage
 
-        window_size = int(coarse_window_seconds * semantic_steps_per_second - 1)
+        window_size = int(coarse_window_seconds * semantic_steps_per_second)
         step_size = int(window_size * coarse_sliding_window_step_percent)
         all_semantic_token_ids = all_semantic_token_ids.unfold(1, window_size, step_size)
         all_semantic_token_ids = rearrange(all_semantic_token_ids, 'b n q w -> n b w q')
