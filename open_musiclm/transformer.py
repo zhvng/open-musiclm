@@ -355,6 +355,8 @@ class Transformer(nn.Module):
             self.rel_pos_bias = RelativePositionBias(dim=dim // 2, heads=heads)
         elif relative_position_bias_type == 't5':
             self.rel_pos_bias = T5RelativePositionBias(heads=heads, num_buckets=32, max_distance=128)
+        elif relative_position_bias_type == 'none':
+            self.rel_pos_bias = None
         else:
             raise ValueError(f'invalid relative position bias type: {relative_position_bias_type}')
 

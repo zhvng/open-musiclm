@@ -44,7 +44,7 @@ class EncodecConfig:
     codebook_size: int
     output_hz: int = 75
 
-RelativePositionBiasType = Literal['continuous', 't5']
+RelativePositionBiasType = Literal['continuous', 't5', 'none']
 
 @dataclass
 class SemanticConfig:
