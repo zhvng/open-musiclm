@@ -174,6 +174,8 @@ class Attention(nn.Module):
         self.non_causal_prefix = non_causal_prefix
         self.dropout = dropout
         self.use_memory_efficient_attention = use_memory_efficient_attention
+        if self.use_memory_efficient_attention and not is_xformers_available:
+            raise ImportError("Please install xformers to use memory efficient attention")
 
         inner_dim = dim_head * heads
 
@@ -260,8 +262,6 @@ class Attention(nn.Module):
         # attention
 
         if self.use_memory_efficient_attention:
-            if not is_xformers_available:
-                raise ImportError("Please install xformers to use memory efficient attention")
             if exists(attn_bias):
                 attn_bias = F.pad(attn_bias, (self.num_null_kv, 0), value=0.)
 
