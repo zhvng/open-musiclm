@@ -10,7 +10,12 @@ import math
 
 from .utils import default, exists, grad_shrink, l2norm
 
-import xformers.ops
+try:
+    import xformers.ops as xops
+
+    is_xformers_available = True
+except ImportError:
+    is_xformers_available = False
 
 # bias-less layernorm, being used in more recent T5s, PaLM, also in @borisdayma 's experiments shared with me
 # greater stability
@@ -255,6 +260,8 @@ class Attention(nn.Module):
         # attention
 
         if self.use_memory_efficient_attention:
+            if not is_xformers_available:
+                raise ImportError("Please install xformers to use memory efficient attention")
             if exists(attn_bias):
                 attn_bias = F.pad(attn_bias, (self.num_null_kv, 0), value=0.)
 
@@ -272,13 +279,12 @@ class Attention(nn.Module):
 
                     attn_bias = attn_bias.masked_fill(causal_mask, -torch.finfo(attn_bias.dtype).max)
 
-            q = rearrange(q, 'b h n d -> b n h d').contiguous()
-            k = repeat(k, 'b n d -> b n h d', h=self.heads).contiguous()
-            v = repeat(v, 'b n d -> b n h d', h=self.heads).contiguous()
+            q = rearrange(q, 'b h n d -> b n h d')
+            k = repeat(k, 'b n d -> b n h d', h=self.heads)
+            v = repeat(v, 'b n d -> b n h d', h=self.heads)
 
             # compute attention
-            # note: this will still be quadratic wrt memory because of the attention bias tensor, but it's faster
-            out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=attn_bias, p=self.dropout)
+            out = xops.memory_efficient_attention(q, k, v, attn_bias=attn_bias, p=self.dropout)
 
             # merge heads
             out = rearrange(out, 'b n h d -> b n (h d)')

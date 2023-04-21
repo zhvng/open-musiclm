@@ -18,7 +18,6 @@ dependencies:
     - ftfy
     - tqdm
     - transformers
-    - xformers
     - encodec==0.1.1
     - gdown
     - accelerate>=0.17.0
