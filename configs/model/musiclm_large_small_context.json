@@ -36,7 +36,8 @@
         "ff_dropout": 0.1,
         "grad_shrink_alpha": 0.1,
         "non_causal_prefix_size": 0,
-        "relative_position_bias_type": "continuous"
+        "relative_position_bias_type": "continuous",
+        "use_memory_efficient_attention": true
     },
     "coarse_cfg": {
         "dim": 1024,
@@ -46,7 +47,8 @@
         "ff_dropout": 0.1,
         "grad_shrink_alpha": 0.1,
         "non_causal_prefix_size": 0,
-        "relative_position_bias_type": "continuous"
+        "relative_position_bias_type": "continuous",
+        "use_memory_efficient_attention": true
     },
     "fine_cfg": {
         "dim": 1024,
@@ -56,6 +58,7 @@
         "ff_dropout": 0.1,
         "grad_shrink_alpha": 0.1,
         "non_causal_prefix_size": 0,
-        "relative_position_bias_type": "continuous"
+        "relative_position_bias_type": "continuous",
+        "use_memory_efficient_attention": true
     }
 }

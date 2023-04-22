@@ -51,6 +51,8 @@ class TokenConditionedTransformer(nn.Module):
         cond_as_self_attn_prefix=False,
         cond_drop_prob=0.5,
         grad_shrink_alpha=0.1,
+        use_absolute_position_embeddings=False,
+        max_absolute_position_embeddings=262,
         **kwargs
     ):
         super().__init__()
@@ -59,10 +61,12 @@ class TokenConditionedTransformer(nn.Module):
 
         self.has_condition = has_condition
         self.cond_drop_prob = cond_drop_prob
+        self.use_absolute_position_embeddings = use_absolute_position_embeddings
 
         self.start_tokens = torch.nn.ParameterList()
         self.logit_weights = torch.nn.ParameterList()
         self.embeddings = torch.nn.ModuleList()
+        self.absolute_position_embeddings = torch.nn.ModuleList() if self.use_absolute_position_embeddings else None
         self.eos_ids = []
 
         for sequence in token_sequences:
@@ -73,6 +77,9 @@ class TokenConditionedTransformer(nn.Module):
 
             self.embeddings.append(nn.Embedding(codebook_size_with_eos * sequence.num_quantizers, dim))
             self.logit_weights.append(nn.Parameter(torch.randn(sequence.num_quantizers, codebook_size_with_eos, dim)))
+
+            if self.use_absolute_position_embeddings:
+                self.absolute_position_embeddings.append(nn.Embedding(max_absolute_position_embeddings, dim))
 
         self.transformer = Transformer(
             dim=dim,
@@ -113,7 +120,7 @@ class TokenConditionedTransformer(nn.Module):
         tokens = []
         start_tokens = []
         split_at = []
-        for sequence, token_ids, embedding, start_token in zip(self.token_sequences, all_token_ids, self.embeddings, self.start_tokens):
+        for idx, sequence, token_ids, embedding, start_token in zip(range(len(self.token_sequences)), self.token_sequences, all_token_ids, self.embeddings, self.start_tokens):
 
             # add offsets
             if sequence.num_quantizers > 1:
@@ -124,7 +131,11 @@ class TokenConditionedTransformer(nn.Module):
 
             # get embeddings and prepare for next step
             token_embeddings = get_embeds(embedding, token_ids, pad_id=-1)
-            tokens.append(token_embeddings)
+            if self.use_absolute_position_embeddings:
+                position_embeddings = self.absolute_position_embeddings[idx](torch.arange(token_embeddings.shape[1], device=device)[None, :])
+                tokens.append(token_embeddings + position_embeddings)
+            else:
+                tokens.append(token_embeddings)
             start_tokens.append(repeat(start_token, 'd -> b 1 d', b=b))
 
             n_tokens = token_embeddings.shape[1] + 1 # +1 for start token of next sequence
