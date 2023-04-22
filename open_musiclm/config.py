@@ -57,6 +57,8 @@ class SemanticConfig:
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
     use_memory_efficient_attention: bool = True
+    use_absolute_position_embeddings: bool = False
+    max_absolute_position_embeddings: int = 12 + 250
 
 @dataclass
 class CoarseConfig:
@@ -69,7 +71,8 @@ class CoarseConfig:
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
     use_memory_efficient_attention: bool = True
-
+    use_absolute_position_embeddings: bool = False
+    max_absolute_position_embeddings: int = 12 + 100 + 600
 @dataclass
 class FineConfig:
     dim: int = 1024
@@ -81,7 +84,8 @@ class FineConfig:
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
     use_memory_efficient_attention: bool = True
-
+    use_absolute_position_embeddings: bool = False
+    max_absolute_position_embeddings: int = 12 + 300 + 900
 @dataclass
 class GlobalConfig:
     semantic_audio_length_seconds: float = 10.0
