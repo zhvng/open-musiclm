@@ -37,7 +37,7 @@
         "grad_shrink_alpha": 0.1,
         "non_causal_prefix_size": 0,
         "relative_position_bias_type": "continuous",
-        "use_memory_efficient_attention": true
+        "use_memory_efficient_attention": false
     },
     "coarse_cfg": {
         "dim": 1024,
@@ -48,7 +48,7 @@
         "grad_shrink_alpha": 0.1,
         "non_causal_prefix_size": 0,
         "relative_position_bias_type": "continuous",
-        "use_memory_efficient_attention": true
+        "use_memory_efficient_attention": false
     },
     "fine_cfg": {
         "dim": 1024,
@@ -59,6 +59,6 @@
         "grad_shrink_alpha": 0.1,
         "non_causal_prefix_size": 0,
         "relative_position_bias_type": "continuous",
-        "use_memory_efficient_attention": true
+        "use_memory_efficient_attention": false
     }
 }
