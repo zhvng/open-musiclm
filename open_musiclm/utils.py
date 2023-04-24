@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import os
 from torchaudio.functional import resample
+import math
 
 from einops import rearrange, repeat, reduce
 
@@ -95,6 +96,9 @@ def mask_out_after_eos_id(t, eos_id, mask_value = -1, keep_eos = True):
 def all_rows_have_eos_id(t, eos_id):
     eos_mask = (t == eos_id)
     return torch.any(eos_mask, dim = -1).all()
+
+def cosine_schedule(t):
+    return torch.cos(t * math.pi * 0.5)
 
 # classifier free guidance functions
 

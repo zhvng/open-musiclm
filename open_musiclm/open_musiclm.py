@@ -13,11 +13,11 @@ from .clap_quantized import ClapQuantized
 from .model_types import NeuralCodec, Wav2Vec
 from .transformer import Transformer
 from .utils import (all_rows_have_eos_id, append_eos_id,
-                    batch_unique_consecutive, beartype_jit, ceil_div, default,
-                    eval_decorator, exists, float32_to_int16,
-                    generate_mask_with_prob, get_embeds, gumbel_sample,
-                    int16_to_float32, mask_out_after_eos_id,
-                    round_down_nearest_multiple, top_k, prepare_audio)
+                    batch_unique_consecutive, beartype_jit, ceil_div,
+                    cosine_schedule, default, eval_decorator, exists,
+                    float32_to_int16, generate_mask_with_prob, get_embeds,
+                    gumbel_sample, int16_to_float32, mask_out_after_eos_id,
+                    prepare_audio, round_down_nearest_multiple, top_k)
 
 
 @dataclass
@@ -53,6 +53,7 @@ class TokenConditionedTransformer(nn.Module):
         grad_shrink_alpha=0.1,
         use_absolute_position_embeddings=False,
         max_absolute_position_embeddings=262,
+        maskgit_mode=False,
         **kwargs
     ):
         super().__init__()
@@ -68,14 +69,21 @@ class TokenConditionedTransformer(nn.Module):
         self.embeddings = torch.nn.ModuleList()
         self.absolute_position_embeddings = torch.nn.ModuleList() if self.use_absolute_position_embeddings else None
         self.eos_ids = []
+        self.maskgit_mode = maskgit_mode
+        self.mask_token_id = None
 
-        for sequence in token_sequences:
+        for idx, sequence in enumerate(token_sequences):
             self.start_tokens.append(nn.Parameter(torch.randn(dim)))
             self.eos_ids.append(sequence.codebook_size)
 
             codebook_size_with_eos = sequence.codebook_size + 1
+            if idx == len(token_sequences) - 1 and self.maskgit_mode:
+                self.mask_token_id = self.eos_ids[idx] # can be same as eos id bc it's internal
 
-            self.embeddings.append(nn.Embedding(codebook_size_with_eos * sequence.num_quantizers, dim))
+            num_token_embeddings = codebook_size_with_eos * sequence.num_quantizers
+
+            self.embeddings.append(nn.Embedding(num_token_embeddings, dim))
+
             self.logit_weights.append(nn.Parameter(torch.randn(sequence.num_quantizers, codebook_size_with_eos, dim)))
 
             if self.use_absolute_position_embeddings:
@@ -124,7 +132,8 @@ class TokenConditionedTransformer(nn.Module):
 
             # add offsets
             if sequence.num_quantizers > 1:
-                offsets = sequence.codebook_size * torch.arange(sequence.num_quantizers, device=device)
+                codebook_size_with_mask = sequence.codebook_size + 1 if self.maskgit_mode and idx == len(self.token_sequences) - 1 else sequence.codebook_size
+                offsets = codebook_size_with_mask * torch.arange(sequence.num_quantizers, device=device)
                 offsets = repeat(offsets, 'q -> 1 (n q)', n=ceil_div(token_ids.shape[-1], sequence.num_quantizers))
                 offsets = offsets[:, :token_ids.shape[-1]]
                 token_ids = token_ids + offsets
@@ -232,6 +241,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
         self.transformer = transformer
 
         self.token_sequences = transformer.token_sequences
+        self.maskgit_mode = transformer.maskgit_mode
+        self.mask_token_id = transformer.mask_token_id
 
         self.unique_consecutive = unique_consecutive
         self.pad_id = pad_id
@@ -374,6 +385,16 @@ class TokenConditionedTransformerWrapper(nn.Module):
         if self.mask_prob > 0 and self.training:
             combined_self_attn_mask &= generate_mask_with_prob(
                 combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
+
+        # if maskgit mode, mask input tokens
+        if self.training and self.maskgit_mode:
+            timesteps = torch.rand(batch, device=device)
+            mask_prob = cosine_schedule(timesteps)
+            num_token_masked = (pred_token_len * mask_prob).round().clamp(min=1)
+            batch_randperm = torch.rand(batch, pred_token_len, device=device).argsort(dim=-1)
+            mask_token_mask = batch_randperm < num_token_masked.unsqueeze(-1)
+            all_token_ids[-1] = torch.where(mask_token_mask, self.mask_token_id, all_token_ids[-1])
+            all_labels[-1][:, :pred_token_len] = torch.where(mask_token_mask, all_labels[-1][:, :pred_token_len], -100)
 
         all_logits = self.transformer(
             all_token_ids=all_token_ids,

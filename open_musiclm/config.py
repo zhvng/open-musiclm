@@ -59,6 +59,7 @@ class SemanticConfig:
     use_memory_efficient_attention: bool = False
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 250
+    maskgit_mode: bool = False
 
 @dataclass
 class CoarseConfig:
@@ -73,6 +74,8 @@ class CoarseConfig:
     use_memory_efficient_attention: bool = False
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 100 + 600
+    maskgit_mode: bool = False
+
 @dataclass
 class FineConfig:
     dim: int = 1024
@@ -86,6 +89,8 @@ class FineConfig:
     use_memory_efficient_attention: bool = False
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 300 + 900
+    maskgit_mode: bool = False
+
 @dataclass
 class GlobalConfig:
     semantic_audio_length_seconds: float = 10.0
