@@ -272,6 +272,9 @@ class TokenConditionedTransformerWrapper(nn.Module):
         include_eos_in_output=False,
         append_eos_to_conditioning_tokens=True,
         allow_eos_in_output=False,
+        maskgit_timesteps=18,
+        maskgit_noise_schedule=cosine_schedule,
+        maskgit_guidance_scale=0,
         **kwargs
     ):
         assert len(conditioning_token_ids) == len(self.token_sequences) - 1
@@ -303,38 +306,96 @@ class TokenConditionedTransformerWrapper(nn.Module):
             conditioning_token_ids = list(map(lambda t: rearrange(t, 'b ... -> b (...)'), conditioning_token_ids))
             conditioning_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(conditioning_token_ids, self.eos_ids)]
 
-        # initialize
+        if not self.maskgit_mode:
 
-        sampled_pred_token_ids = pred_token_ids.clone()
+            # initialize
 
-        for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
-            for ind in range(pred_sequence_info.num_quantizers):
-                is_last_step = ind == (pred_sequence_info.num_quantizers - 1)
+            sampled_pred_token_ids = pred_token_ids.clone()
+
+            for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
+                for ind in range(pred_sequence_info.num_quantizers):
+                    is_last_step = ind == (pred_sequence_info.num_quantizers - 1)
+
+                    pred_logits = self.transformer(
+                        all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
+                        return_only_final_seq_logits=True,
+                        **kwargs
+                    )[-1]
+
+                    last_pred_logits = pred_logits[:, -1]
+
+                    if not allow_eos_in_output or not is_last_step:
+                        # prevent eos 1) if we don't allow it or 2) in the middle of a time step
+                        last_pred_logits[:, -1] = float('-inf')
+
+                    filtered_logits = top_k(last_pred_logits, thres=filter_thres)
+                    sampled = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+
+                    sampled = rearrange(sampled, 'b -> b 1')
+                    sampled_pred_token_ids = torch.cat((sampled_pred_token_ids, sampled), dim=-1)
+
+            sampled_pred_token_ids = mask_out_after_eos_id(
+                sampled_pred_token_ids, pred_eos_id, keep_eos=include_eos_in_output)
+            sampled_pred_token_ids = rearrange(
+                sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
+
+            return sampled_pred_token_ids
+        else:
+            # begin with all image token ids masked
+            mask_token_id = self.mask_token_id
+            seq_len = max_time_steps
+
+            shape = (batch, seq_len)
+
+            # initialize with all image tokens masked
+            pred_token_ids = torch.ones(shape, dtype=torch.long, device=self.device) * mask_token_id
+            scores = torch.zeros(shape, dtype=torch.float32, device=self.device)
+            starting_temperature = temperature
+
+            for timestep, steps_until_x0 in tqdm(
+                zip(torch.linspace(0, 1, maskgit_timesteps, device=self.device), reversed(range(maskgit_timesteps))), total=maskgit_timesteps
+            ):
+                rand_mask_prob = maskgit_noise_schedule(timestep)
+                num_token_masked = max(int((rand_mask_prob * seq_len).item()), 1)
+
+                masked_indices = scores.topk(num_token_masked, dim=-1).indices
+                input_ids = input_ids.scatter(1, masked_indices, mask_token_id)
+
+                # classifier free guidance
+                # if maskgit_guidance_scale > 0:
+                #     uncond_encoder_states = torch.zeros_like(encoder_hidden_states)
+                #     model_input = torch.cat([input_ids] * 2)
+                #     condition = torch.cat([encoder_hidden_states, uncond_encoder_states])
+                #     cond_logits, uncond_logits = self(model_input, encoder_hidden_states=condition).chunk(2)
+                #     cond_logits = cond_logits[..., : self.config.codebook_size]
+                #     uncond_logits = uncond_logits[..., : self.config.codebook_size]
+                #     logits = uncond_logits + guidance_scale * (cond_logits - uncond_logits)
+                # else:
+                if maskgit_guidance_scale > 0:
+                    print("WARNING: classifier free guidance not yet supported")
 
                 pred_logits = self.transformer(
-                    all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
+                    all_token_ids=conditioning_token_ids + [input_ids],
                     return_only_final_seq_logits=True,
                     **kwargs
                 )[-1]
+                if not allow_eos_in_output:
+                    pred_logits[:, -1] = float('-inf')
 
-                last_pred_logits = pred_logits[:, -1]
+                filtered_logits = top_k(pred_logits, thres=filter_thres)
+                temperature = starting_temperature * (steps_until_x0 / maskgit_timesteps)  # temperature is annealed
+                pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-                if not allow_eos_in_output or not is_last_step:
-                    # prevent eos 1) if we don't allow it or 2) in the middle of a time step
-                    last_pred_logits[:, -1] = float('-inf')
+                is_mask = input_ids == mask_token_id
 
-                filtered_logits = top_k(last_pred_logits, thres=filter_thres)
-                sampled = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+                input_ids = torch.where(is_mask, pred_ids, input_ids)
 
-                sampled = rearrange(sampled, 'b -> b 1')
-                sampled_pred_token_ids = torch.cat((sampled_pred_token_ids, sampled), dim=-1)
+                probs_without_temperature = F.softmax(pred_logits, dim=-1)
 
-        sampled_pred_token_ids = mask_out_after_eos_id(
-            sampled_pred_token_ids, pred_eos_id, keep_eos=include_eos_in_output)
-        sampled_pred_token_ids = rearrange(
-            sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
+                scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+                scores = rearrange(scores, "... 1 -> ...")
 
-        return sampled_pred_token_ids
+            return input_ids
 
     def forward(
         self,
