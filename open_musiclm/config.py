@@ -406,6 +406,7 @@ def create_data_preprocessor_from_config(
         audio_conditioner=clap,
         wav2vec=wav2vec,
         neural_codec=encodec_wrapper,
+        num_coarse_quantizers=model_config.global_cfg.num_coarse_quantizers,
         semantic_audio_length_seconds=model_config.global_cfg.semantic_audio_length_seconds,
         coarse_audio_length_seconds=model_config.global_cfg.coarse_audio_length_seconds,
         fine_audio_length_seconds=model_config.global_cfg.fine_audio_length_seconds,
