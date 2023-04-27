@@ -339,6 +339,7 @@ class Transformer(nn.Module):
         cond_as_self_attn_prefix=False,
         non_causal_prefix_size=0,
         relative_position_bias_type='continuous',
+        causal=True,
         **kwargs
     ):
         super().__init__()
@@ -362,7 +363,7 @@ class Transformer(nn.Module):
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim=dim, heads=heads, dropout=attn_dropout, causal=True, non_causal_prefix=non_causal_prefix_size, **kwargs),
+                Attention(dim=dim, heads=heads, dropout=attn_dropout, causal=causal, non_causal_prefix=non_causal_prefix_size, **kwargs),
                 Attention(dim=dim, heads=heads, dropout=attn_dropout, dim_context=dim_context,
                           num_null_kv=1, norm_context=True, **kwargs) if cross_attend else None,
                 FeedForward(dim=dim, dropout=ff_dropout)

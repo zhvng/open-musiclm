@@ -60,6 +60,7 @@ class SemanticConfig:
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 250
     maskgit_mode: bool = False
+    causal: bool = True
 
 @dataclass
 class CoarseConfig:
@@ -75,6 +76,7 @@ class CoarseConfig:
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 100 + 600
     maskgit_mode: bool = False
+    causal: bool = True
 
 @dataclass
 class FineConfig:
@@ -90,6 +92,7 @@ class FineConfig:
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 300 + 900
     maskgit_mode: bool = False
+    causal: bool = True
 
 @dataclass
 class GlobalConfig:
