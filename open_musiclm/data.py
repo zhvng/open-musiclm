@@ -16,9 +16,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torchaudio.functional import resample
 
-from .utils import (beartype_jit, curtail_to_multiple, default,
-                    float32_to_int16, int16_to_float32,
-                    zero_mean_unit_var_norm)
+from .utils import (beartype_jit, curtail_to_multiple, default)
 
 # helper functions
 
@@ -68,7 +66,6 @@ class SoundDataset(Dataset):
         folder,
         exts = ['flac', 'wav', 'mp3'],
         max_length_seconds: Optional[Union[FloatOrInt, Tuple[Optional[FloatOrInt], ...]]] = 1,
-        normalize: Union[bool, Tuple[bool, ...]] = False,
         target_sample_hz: OptionalIntOrTupleInt = None,
         seq_len_multiple_of: OptionalIntOrTupleInt = None,
         ignore_files: Optional[List[str]] = None,
@@ -104,12 +101,10 @@ class SoundDataset(Dataset):
         self.max_length_seconds = cast_tuple(max_length_seconds, num_outputs)
         self.max_length = tuple([int(s * hz) if exists(s) else None for s, hz in zip(self.max_length_seconds, self.target_sample_hz)])
 
-        self.normalize = cast_tuple(normalize, num_outputs)
-
         self.seq_len_multiple_of = cast_tuple(seq_len_multiple_of, num_outputs)
 
         assert len(self.max_length) == len(self.max_length_seconds) == len(
-            self.target_sample_hz) == len(self.seq_len_multiple_of) == len(self.normalize)
+            self.target_sample_hz) == len(self.seq_len_multiple_of)
 
     def __len__(self):
         return len(self.files)
@@ -134,10 +129,8 @@ class SoundDataset(Dataset):
 
         # recursively crop the audio at random in the order of longest to shortest max_length_seconds, padding when necessary.
         # e.g. if max_length_seconds = (10, 4), pick a 10 second crop from the original, then pick a 4 second crop from the 10 second crop
-        # also use normalized data when specified
 
         temp_data = data
-        temp_data_normalized = zero_mean_unit_var_norm(data)
 
         num_outputs = len(self.target_sample_hz)
         data = [None for _ in range(num_outputs)]
@@ -157,17 +150,14 @@ class SoundDataset(Dataset):
                     start = torch.randint(0, max_start, (1, )) if self.random_crop else 0
 
                     temp_data = temp_data[:, start:start + target_length]
-                    temp_data_normalized = temp_data_normalized[:, start:start + target_length]
                 else:
                     if pad_to_target_length:
                         temp_data = F.pad(temp_data, (0, target_length - audio_length), 'constant')
-                        temp_data_normalized = F.pad(temp_data_normalized, (0, target_length - audio_length), 'constant')
 
-            data[unsorted_i] = temp_data_normalized if self.normalize[unsorted_i] else temp_data
+            data[unsorted_i] = temp_data
+
         # resample if target_sample_hz is not None in the tuple
         data_tuple = tuple((resample(d, sample_hz, target_sample_hz) if exists(target_sample_hz) else d) for d, target_sample_hz in zip(data, self.target_sample_hz))
-        # quantize non-normalized audio to a valid waveform
-        data_tuple = tuple(d if self.normalize[i] else int16_to_float32(float32_to_int16(d)) for i, d in enumerate(data_tuple))
 
         output = []
 
@@ -350,7 +340,7 @@ class PreprocessedDataset(Dataset):
     def crop_semantic_tokens(self, semantic_token_ids, start_idx, end_idx):
         # with start_idx = 0, end_idx = 2, semantic_steps_per_second=50
         # we return semantic_token_ids[:, 0:99]
-        return semantic_token_ids[:, start_idx * self.semantic_steps_per_second: end_idx * self.semantic_steps_per_second - 1]
+        return semantic_token_ids[:, start_idx * self.semantic_steps_per_second: end_idx * self.semantic_steps_per_second]
 
     def crop_acoustic_tokens(self, coarse_or_fine_ids, start_idx, end_idx):
         # with start_idx = 0, end_idx = 2, coarse_steps_per_second=75

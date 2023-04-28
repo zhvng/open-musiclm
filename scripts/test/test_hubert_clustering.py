@@ -12,7 +12,7 @@ import numpy as np
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from open_musiclm.config import load_model_config, load_training_config, create_hubert_kmeans_from_config, create_hubert_kmeans_trainer_from_config
-from open_musiclm.utils import zero_mean_unit_var_norm, int16_to_float32, float32_to_int16, exists
+from open_musiclm.utils import zero_mean_unit_var_norm, int16_to_float32, float32_to_int16, exists, prepare_audio
 from open_musiclm.open_musiclm import get_or_compute_semantic_token_ids
 
 if __name__ == '__main__':
@@ -29,7 +29,7 @@ if __name__ == '__main__':
 
     print('loading hubert...')
     wav2vec = create_hubert_kmeans_from_config(model_config, args.kmeans_path, device)
-    
+
     path = Path(args.folder)
     assert path.exists(), 'folder does not exist'
 
@@ -48,21 +48,9 @@ if __name__ == '__main__':
         audios_for_wav2vec = []
         for audio_path in files[start_audio: start_audio + 16]:
             data, sample_hz = torchaudio.load(audio_path)
-
-            if data.shape[0] > 1:
-                data = torch.mean(data, dim=0).unsqueeze(0)
-
-            target_length = int(audio_seconds * sample_hz)
-            normalized_data = zero_mean_unit_var_norm(data)
-
-            normalized_data = normalized_data[: , :target_length]
-
-            audio_for_wav2vec = resample(normalized_data, sample_hz, wav2vec.target_sample_hz)
-
-            audio_for_wav2vec = int16_to_float32(float32_to_int16(audio_for_wav2vec))
-
+            audio_for_wav2vec = prepare_audio(data, sample_hz, wav2vec.target_sample_hz, audio_seconds)
             audios_for_wav2vec.append(audio_for_wav2vec)
-        
+
         audios_for_wav2vec = torch.cat(audios_for_wav2vec, dim=0).to(device)
         semantic_token_ids = get_or_compute_semantic_token_ids(None, audios_for_wav2vec, wav2vec)
         print(semantic_token_ids.shape)
@@ -123,5 +111,5 @@ if __name__ == '__main__':
 
     # show the plot
     plt.savefig('./results/accuracy_matrix.png')
- 
+
 

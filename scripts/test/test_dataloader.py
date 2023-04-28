@@ -21,7 +21,6 @@ folder = './data/fma_large/000'
 dataset = SoundDataset(
     folder,
     max_length_seconds=(1, 5),
-    normalize=(True, False),
     target_sample_hz=(16000, 24000),
     seq_len_multiple_of=None,
     ignore_load_errors=True
@@ -42,7 +41,6 @@ for i in range(test_steps):
 dataset = SoundDatasetForPreprocessing(
     folder,
     max_length_seconds=(None, 1),
-    normalize=(True, False),
     target_sample_hz=(16000, 24000),
     seq_len_multiple_of=None,
     ignore_load_errors=True
