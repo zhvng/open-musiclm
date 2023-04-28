@@ -340,7 +340,7 @@ class PreprocessedDataset(Dataset):
     def crop_semantic_tokens(self, semantic_token_ids, start_idx, end_idx):
         # with start_idx = 0, end_idx = 2, semantic_steps_per_second=50
         # we return semantic_token_ids[:, 0:99]
-        return semantic_token_ids[:, start_idx * self.semantic_steps_per_second: end_idx * self.semantic_steps_per_second - 1]
+        return semantic_token_ids[:, start_idx * self.semantic_steps_per_second: end_idx * self.semantic_steps_per_second]
 
     def crop_acoustic_tokens(self, coarse_or_fine_ids, start_idx, end_idx):
         # with start_idx = 0, end_idx = 2, coarse_steps_per_second=75

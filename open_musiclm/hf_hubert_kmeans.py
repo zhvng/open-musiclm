@@ -45,7 +45,7 @@ class HfHubertWithKmeans(nn.Module):
         self.codebook_size = kmeans.n_clusters if exists(kmeans) else None
         self.context_window_seconds = context_window_seconds
         self.bin_size = bin_size
-        self.output_hz = math.ceil(output_hz / bin_size)
+        self.output_hz = output_hz
 
         self.codebook_size = codebook_size
         if exists(kmeans):
