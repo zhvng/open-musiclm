@@ -13,11 +13,11 @@ from .clap_quantized import ClapQuantized
 from .model_types import NeuralCodec, Wav2Vec
 from .transformer import Transformer
 from .utils import (all_rows_have_eos_id, append_eos_id,
-                    batch_unique_consecutive, beartype_jit, ceil_div, default,
-                    eval_decorator, exists, float32_to_int16,
-                    generate_mask_with_prob, get_embeds, gumbel_sample,
-                    int16_to_float32, mask_out_after_eos_id,
-                    round_down_nearest_multiple, top_k, prepare_audio)
+                    batch_unique_consecutive, beartype_jit, ceil_div,
+                    cosine_schedule, default, eval_decorator, exists,
+                    float32_to_int16, generate_mask_with_prob, get_embeds,
+                    gumbel_sample, int16_to_float32, mask_out_after_eos_id,
+                    prepare_audio, round_down_nearest_multiple, top_k)
 
 
 @dataclass
@@ -53,6 +53,7 @@ class TokenConditionedTransformer(nn.Module):
         grad_shrink_alpha=0.1,
         use_absolute_position_embeddings=False,
         max_absolute_position_embeddings=262,
+        maskgit_mode=False,
         **kwargs
     ):
         super().__init__()
@@ -68,14 +69,21 @@ class TokenConditionedTransformer(nn.Module):
         self.embeddings = torch.nn.ModuleList()
         self.absolute_position_embeddings = torch.nn.ModuleList() if self.use_absolute_position_embeddings else None
         self.eos_ids = []
+        self.maskgit_mode = maskgit_mode
+        self.mask_token_id = None
 
-        for sequence in token_sequences:
+        for idx, sequence in enumerate(token_sequences):
             self.start_tokens.append(nn.Parameter(torch.randn(dim)))
             self.eos_ids.append(sequence.codebook_size)
 
             codebook_size_with_eos = sequence.codebook_size + 1
+            if idx == len(token_sequences) - 1 and self.maskgit_mode:
+                self.mask_token_id = self.eos_ids[idx] # can be same as eos id bc it's internal
 
-            self.embeddings.append(nn.Embedding(codebook_size_with_eos * sequence.num_quantizers, dim))
+            num_token_embeddings = codebook_size_with_eos * sequence.num_quantizers
+
+            self.embeddings.append(nn.Embedding(num_token_embeddings, dim))
+
             self.logit_weights.append(nn.Parameter(torch.randn(sequence.num_quantizers, codebook_size_with_eos, dim)))
 
             if self.use_absolute_position_embeddings:
@@ -92,6 +100,25 @@ class TokenConditionedTransformer(nn.Module):
             grad_shrink_alpha=grad_shrink_alpha,
             **kwargs
         )
+
+        if self.maskgit_mode:
+            self.apply(self._init_weights_maskgit)
+
+    def _init_weights_maskgit(self, module):
+        """
+        Initialize the weights according to the original maskgit implementation.
+        https://github.com/google-research/maskgit/blob/main/maskgit/nets/maskgit_transformer.py#L37
+        """
+        if isinstance(module, nn.Linear):
+            nn.init.trunc_normal_(module.weight, std=0.02)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            nn.init.trunc_normal_(module.weight, std=0.02)
+        elif isinstance(module, nn.LayerNorm):
+            module.weight.data.fill_(1.0)
+            if module.bias is not None:
+                module.bias.data.zero_()
 
     @property
     def device(self):
@@ -124,7 +151,8 @@ class TokenConditionedTransformer(nn.Module):
 
             # add offsets
             if sequence.num_quantizers > 1:
-                offsets = sequence.codebook_size * torch.arange(sequence.num_quantizers, device=device)
+                codebook_size_with_mask = sequence.codebook_size + 1 if self.maskgit_mode and idx == len(self.token_sequences) - 1 else sequence.codebook_size
+                offsets = codebook_size_with_mask * torch.arange(sequence.num_quantizers, device=device)
                 offsets = repeat(offsets, 'q -> 1 (n q)', n=ceil_div(token_ids.shape[-1], sequence.num_quantizers))
                 offsets = offsets[:, :token_ids.shape[-1]]
                 token_ids = token_ids + offsets
@@ -232,6 +260,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
         self.transformer = transformer
 
         self.token_sequences = transformer.token_sequences
+        self.maskgit_mode = transformer.maskgit_mode
+        self.mask_token_id = transformer.mask_token_id
 
         self.unique_consecutive = unique_consecutive
         self.pad_id = pad_id
@@ -261,6 +291,9 @@ class TokenConditionedTransformerWrapper(nn.Module):
         include_eos_in_output=False,
         append_eos_to_conditioning_tokens=True,
         allow_eos_in_output=False,
+        maskgit_timesteps=18,
+        maskgit_noise_schedule=cosine_schedule,
+        maskgit_guidance_scale=0,
         **kwargs
     ):
         assert len(conditioning_token_ids) == len(self.token_sequences) - 1
@@ -292,38 +325,99 @@ class TokenConditionedTransformerWrapper(nn.Module):
             conditioning_token_ids = list(map(lambda t: rearrange(t, 'b ... -> b (...)'), conditioning_token_ids))
             conditioning_token_ids = [append_eos_id(ids, eos_id) for ids, eos_id in zip(conditioning_token_ids, self.eos_ids)]
 
-        # initialize
+        if not self.maskgit_mode:
 
-        sampled_pred_token_ids = pred_token_ids.clone()
+            # initialize
 
-        for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
-            for ind in range(pred_sequence_info.num_quantizers):
-                is_last_step = ind == (pred_sequence_info.num_quantizers - 1)
+            sampled_pred_token_ids = pred_token_ids.clone()
+
+            for time_step in tqdm(range(init_pred_time_step, max_time_steps), desc='generating predicted tokens'):
+                for ind in range(pred_sequence_info.num_quantizers):
+                    is_last_step = ind == (pred_sequence_info.num_quantizers - 1)
+
+                    pred_logits = self.transformer(
+                        all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
+                        return_only_final_seq_logits=True,
+                        **kwargs
+                    )[-1]
+
+                    last_pred_logits = pred_logits[:, -1]
+
+                    if not allow_eos_in_output or not is_last_step:
+                        # prevent eos 1) if we don't allow it or 2) in the middle of a time step
+                        last_pred_logits[:, -1] = float('-inf')
+
+                    filtered_logits = top_k(last_pred_logits, thres=filter_thres)
+                    sampled = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+
+                    sampled = rearrange(sampled, 'b -> b 1')
+                    sampled_pred_token_ids = torch.cat((sampled_pred_token_ids, sampled), dim=-1)
+
+            sampled_pred_token_ids = mask_out_after_eos_id(
+                sampled_pred_token_ids, pred_eos_id, keep_eos=include_eos_in_output)
+            sampled_pred_token_ids = rearrange(
+                sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
+
+            return sampled_pred_token_ids
+        else:
+            # begin with all image token ids masked
+            mask_token_id = self.mask_token_id
+            seq_len = max_time_steps * pred_sequence_info.num_quantizers
+
+            shape = (batch, seq_len)
+
+            # initialize with all image tokens masked
+            input_ids = torch.ones(shape, dtype=torch.long, device=self.device) * mask_token_id
+            scores = torch.zeros(shape, dtype=torch.float32, device=self.device)
+            starting_temperature = temperature
+
+            for timestep, steps_until_x0 in tqdm(
+                zip(torch.linspace(0, 1, maskgit_timesteps, device=self.device), reversed(range(maskgit_timesteps))), total=maskgit_timesteps
+            ):
+                rand_mask_prob = maskgit_noise_schedule(timestep)
+                num_token_masked = max(int((rand_mask_prob * seq_len).item()), 1)
+
+                masked_indices = scores.topk(num_token_masked, dim=-1).indices
+                input_ids = input_ids.scatter(1, masked_indices, mask_token_id)
+
+                # classifier free guidance
+                # if maskgit_guidance_scale > 0:
+                #     uncond_encoder_states = torch.zeros_like(encoder_hidden_states)
+                #     model_input = torch.cat([input_ids] * 2)
+                #     condition = torch.cat([encoder_hidden_states, uncond_encoder_states])
+                #     cond_logits, uncond_logits = self(model_input, encoder_hidden_states=condition).chunk(2)
+                #     cond_logits = cond_logits[..., : self.config.codebook_size]
+                #     uncond_logits = uncond_logits[..., : self.config.codebook_size]
+                #     logits = uncond_logits + guidance_scale * (cond_logits - uncond_logits)
+                # else:
+                if maskgit_guidance_scale > 0:
+                    print("WARNING: classifier free guidance not yet supported")
 
                 pred_logits = self.transformer(
-                    all_token_ids=conditioning_token_ids + [sampled_pred_token_ids],
+                    all_token_ids=conditioning_token_ids + [input_ids],
                     return_only_final_seq_logits=True,
                     **kwargs
                 )[-1]
+                # remove eos. everything is shifted over because of the original autoregressive task
+                # TODO: rewrite a maskgit-first approach
+                pred_logits = pred_logits[:, :-1]
+                if not allow_eos_in_output:
+                    pred_logits[:, :, -1] = float('-inf')
 
-                last_pred_logits = pred_logits[:, -1]
+                filtered_logits = top_k(pred_logits, thres=filter_thres)
+                temperature = starting_temperature * (steps_until_x0 / maskgit_timesteps)  # temperature is annealed
+                pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-                if not allow_eos_in_output or not is_last_step:
-                    # prevent eos 1) if we don't allow it or 2) in the middle of a time step
-                    last_pred_logits[:, -1] = float('-inf')
+                is_mask = input_ids == mask_token_id
 
-                filtered_logits = top_k(last_pred_logits, thres=filter_thres)
-                sampled = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+                input_ids = torch.where(is_mask, pred_ids, input_ids)
 
-                sampled = rearrange(sampled, 'b -> b 1')
-                sampled_pred_token_ids = torch.cat((sampled_pred_token_ids, sampled), dim=-1)
+                probs_without_temperature = F.softmax(pred_logits, dim=-1)
 
-        sampled_pred_token_ids = mask_out_after_eos_id(
-            sampled_pred_token_ids, pred_eos_id, keep_eos=include_eos_in_output)
-        sampled_pred_token_ids = rearrange(
-            sampled_pred_token_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
-
-        return sampled_pred_token_ids
+                scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+                scores = rearrange(scores, "... 1 -> ...")
+            input_ids = rearrange(input_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
+            return input_ids
 
     def forward(
         self,
@@ -374,6 +468,16 @@ class TokenConditionedTransformerWrapper(nn.Module):
         if self.mask_prob > 0 and self.training:
             combined_self_attn_mask &= generate_mask_with_prob(
                 combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
+
+        # if maskgit mode, mask input tokens
+        if self.training and self.maskgit_mode:
+            timesteps = torch.rand(batch, device=device)
+            mask_prob = cosine_schedule(timesteps)
+            num_token_masked = (pred_token_len * mask_prob).round().clamp(min=1)
+            batch_randperm = torch.rand(batch, pred_token_len, device=device).argsort(dim=-1)
+            mask_token_mask = batch_randperm < num_token_masked.unsqueeze(-1)
+            all_token_ids[-1] = torch.where(mask_token_mask, self.mask_token_id, all_token_ids[-1])
+            all_labels[-1][:, :pred_token_len] = torch.where(mask_token_mask, all_labels[-1][:, :pred_token_len], -100)
 
         all_logits = self.transformer(
             all_token_ids=all_token_ids,

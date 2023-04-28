@@ -149,6 +149,7 @@ class SingleStageTrainer(nn.Module):
         results_folder='./results',
         accelerate_kwargs: dict = {},
         config_paths: Optional[List[str]] = None,
+        mask_prob=0.15,
     ):
         super().__init__()
         kwargs_handler = DistributedDataParallelKwargs(find_unused_parameters=True)
@@ -174,7 +175,8 @@ class SingleStageTrainer(nn.Module):
                 semantic_transformer=transformer,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
-                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 1.])
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 1.]),
+                mask_prob=mask_prob,
             )
             if self.use_preprocessed_data:
                 self.ds_fields = ('clap_token_ids', 'semantic_token_ids')
@@ -189,7 +191,8 @@ class SingleStageTrainer(nn.Module):
                 neural_codec=neural_codec,
                 wav2vec=wav2vec,
                 clap=audio_conditioner,
-                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.])
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.]),
+                mask_prob=mask_prob,
             )
             if self.use_preprocessed_data:
                 self.ds_fields = ('clap_token_ids', 'semantic_token_ids', 'coarse_token_ids')
@@ -203,7 +206,8 @@ class SingleStageTrainer(nn.Module):
                 fine_transformer=transformer,
                 clap=audio_conditioner,
                 neural_codec=neural_codec,
-                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.])
+                cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.]),
+                mask_prob=mask_prob,
             )
             if self.use_preprocessed_data:
                 self.ds_fields = ('clap_token_ids', 'coarse_token_ids', 'fine_token_ids')

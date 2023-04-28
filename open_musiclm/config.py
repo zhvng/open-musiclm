@@ -64,6 +64,8 @@ class SemanticConfig:
     use_memory_efficient_attention: bool = False
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 250
+    maskgit_mode: bool = False
+    causal: bool = True
 
 @dataclass
 class CoarseConfig:
@@ -78,6 +80,9 @@ class CoarseConfig:
     use_memory_efficient_attention: bool = False
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 100 + 600
+    maskgit_mode: bool = False
+    causal: bool = True
+
 @dataclass
 class FineConfig:
     dim: int = 1024
@@ -91,6 +96,9 @@ class FineConfig:
     use_memory_efficient_attention: bool = False
     use_absolute_position_embeddings: bool = False
     max_absolute_position_embeddings: int = 12 + 300 + 900
+    maskgit_mode: bool = False
+    causal: bool = True
+
 @dataclass
 class GlobalConfig:
     semantic_audio_length_seconds: float = 10.0
@@ -145,6 +153,7 @@ class SingleStageTrainerConfig:
     save_predicted_tokens: bool
     save_reconstructed_wave: bool
     use_preprocessed_data: bool
+    mask_prob: float = 0.15
 
 @dataclass
 class DataPreprocessorConfig:

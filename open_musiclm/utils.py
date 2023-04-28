@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import os
 from torchaudio.functional import resample
+import math
 
 from einops import rearrange, repeat, reduce
 
@@ -80,7 +81,7 @@ def top_k(logits, thres = 0.5):
     k = max(int((1 - thres) * num_logits), 1)
     val, ind = torch.topk(logits, k)
     probs = torch.full_like(logits, float('-inf'))
-    probs.scatter_(1, ind, val)
+    probs.scatter_(-1, ind, val)
     return probs
 
 def mask_out_after_eos_id(t, eos_id, mask_value = -1, keep_eos = True):
@@ -95,6 +96,9 @@ def mask_out_after_eos_id(t, eos_id, mask_value = -1, keep_eos = True):
 def all_rows_have_eos_id(t, eos_id):
     eos_mask = (t == eos_id)
     return torch.any(eos_mask, dim = -1).all()
+
+def cosine_schedule(t):
+    return torch.cos(t * math.pi * 0.5)
 
 # classifier free guidance functions
 
