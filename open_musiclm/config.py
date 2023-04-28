@@ -148,6 +148,7 @@ class SingleStageTrainerConfig:
     save_predicted_tokens: bool
     save_reconstructed_wave: bool
     use_preprocessed_data: bool
+    mask_prob: float = 0.15
 
 @dataclass
 class DataPreprocessorConfig:
