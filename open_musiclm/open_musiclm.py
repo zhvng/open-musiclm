@@ -101,6 +101,25 @@ class TokenConditionedTransformer(nn.Module):
             **kwargs
         )
 
+        if self.maskgit_mode:
+            self.apply(self._init_weights_maskgit)
+
+    def _init_weights_maskgit(self, module):
+        """
+        Initialize the weights according to the original maskgit implementation.
+        https://github.com/google-research/maskgit/blob/main/maskgit/nets/maskgit_transformer.py#L37
+        """
+        if isinstance(module, nn.Linear):
+            nn.init.trunc_normal_(module.weight, std=0.02)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            nn.init.trunc_normal_(module.weight, std=0.02)
+        elif isinstance(module, nn.LayerNorm):
+            module.weight.data.fill_(1.0)
+            if module.bias is not None:
+                module.bias.data.zero_()
+
     @property
     def device(self):
         return next(self.parameters()).device
