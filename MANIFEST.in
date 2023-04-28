@@ -1,0 +1,2 @@
+recursive-include open_musiclm/laion_clap/clap_module/model_configs *.json
+recursive-include open_musiclm/laion_clap/clap_module bpe_simple_vocab_16e6.txt.gz
