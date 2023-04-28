@@ -81,7 +81,7 @@ def top_k(logits, thres = 0.5):
     k = max(int((1 - thres) * num_logits), 1)
     val, ind = torch.topk(logits, k)
     probs = torch.full_like(logits, float('-inf'))
-    probs.scatter_(1, ind, val)
+    probs.scatter_(-1, ind, val)
     return probs
 
 def mask_out_after_eos_id(t, eos_id, mask_value = -1, keep_eos = True):

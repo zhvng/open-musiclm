@@ -343,12 +343,12 @@ class TokenConditionedTransformerWrapper(nn.Module):
         else:
             # begin with all image token ids masked
             mask_token_id = self.mask_token_id
-            seq_len = max_time_steps
+            seq_len = max_time_steps * pred_sequence_info.num_quantizers
 
             shape = (batch, seq_len)
 
             # initialize with all image tokens masked
-            pred_token_ids = torch.ones(shape, dtype=torch.long, device=self.device) * mask_token_id
+            input_ids = torch.ones(shape, dtype=torch.long, device=self.device) * mask_token_id
             scores = torch.zeros(shape, dtype=torch.float32, device=self.device)
             starting_temperature = temperature
 
@@ -379,8 +379,11 @@ class TokenConditionedTransformerWrapper(nn.Module):
                     return_only_final_seq_logits=True,
                     **kwargs
                 )[-1]
+                # remove eos. everything is shifted over because of the original autoregressive task
+                # TODO: rewrite a maskgit-first approach
+                pred_logits = pred_logits[:, :-1]
                 if not allow_eos_in_output:
-                    pred_logits[:, -1] = float('-inf')
+                    pred_logits[:, :, -1] = float('-inf')
 
                 filtered_logits = top_k(pred_logits, thres=filter_thres)
                 temperature = starting_temperature * (steps_until_x0 / maskgit_timesteps)  # temperature is annealed
@@ -394,7 +397,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
 
                 scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
                 scores = rearrange(scores, "... 1 -> ...")
-
+            input_ids = rearrange(input_ids, 'b (n q) -> b n q', q=pred_sequence_info.num_quantizers)
             return input_ids
 
     def forward(
