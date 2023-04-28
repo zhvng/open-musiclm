@@ -139,8 +139,6 @@ class DataPreprocessor(nn.Module):
 
         target_sample_hz = (audio_conditioner.sample_rate, wav2vec.target_sample_hz, neural_codec.sample_rate)
 
-        normalize = (False, True, False)
-
         seq_len_multiple_of = (None, wav2vec.seq_len_multiple_of, None)
 
         data_max_length_seconds = (max_audio_length_seconds, max_audio_length_seconds, max_audio_length_seconds)
@@ -152,7 +150,6 @@ class DataPreprocessor(nn.Module):
             pad_to_seconds=self.semantic_audio_length_seconds,
             max_length_seconds=data_max_length_seconds,
             random_crop=random_crop,
-            normalize=normalize,
             target_sample_hz=target_sample_hz,
             seq_len_multiple_of=seq_len_multiple_of,
             ignore_load_errors=ignore_load_errors,
