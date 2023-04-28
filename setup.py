@@ -28,7 +28,7 @@ setup(
     'torchaudio',
     'einops>=0.6.1',
     'vector-quantize-pytorch>=1.2.2',
-    'librosa>=0.10.0',
+    'librosa',
     'torchlibrosa',
     'ftfy',
     'tqdm',
