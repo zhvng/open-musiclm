@@ -164,3 +164,10 @@ that re-imagines music. If you're interested check them out at [okio.ai](https:/
   year      = {2022}
 }
 ```
+```bibtex
+@article{li2022large,
+  title     = {Large-Scale Pretrained Model for Self-Supervised Music Audio Representation Learning},
+  author    = {Li, Yizhi and Yuan, Ruibin and Zhang, Ge and Ma, Yinghao and Lin, Chenghua and Chen, Xingran and Ragni, Anton and Yin, Hanzhi and Hu, Zhijie and He, Haoyu and others},
+  year      = {2022}
+}
+```
