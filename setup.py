@@ -8,6 +8,7 @@ __version__ = Path("VERSION").read_text().strip()
 setup(
   name = 'open-musiclm',
   packages = find_packages(exclude=[]),
+  include_package_data=True,
   version = __version__,
   license='MIT',
   description = 'Open MusicLM - Implementation of MusicLM, a text to music model published by Google Research, with a few modifications',
