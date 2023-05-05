@@ -425,6 +425,7 @@ class TokenConditionedTransformerWrapper(nn.Module):
         all_token_ids: List[torch.Tensor],
         return_loss: bool=False,
         input_has_eos: bool=False,
+        maskgit_prob: Optional[float]=None,
         **kwargs
     ):
         assert len(all_token_ids) == len(self.token_sequences)
@@ -470,10 +471,8 @@ class TokenConditionedTransformerWrapper(nn.Module):
                 combined_self_attn_mask.shape, self.mask_prob, device=combined_self_attn_mask.device)
 
         # if maskgit mode, mask input tokens
-        if self.training and self.maskgit_mode:
-            timesteps = torch.rand(batch, device=device)
-            mask_prob = cosine_schedule(timesteps)
-            num_token_masked = (pred_token_len * mask_prob).round().clamp(min=1)
+        if self.maskgit_mode and exists(maskgit_prob):
+            num_token_masked = (pred_token_len * maskgit_prob).round().clamp(min=1)
             batch_randperm = torch.rand(batch, pred_token_len, device=device).argsort(dim=-1)
             mask_token_mask = batch_randperm < num_token_masked.unsqueeze(-1)
             all_token_ids[-1] = torch.where(mask_token_mask, self.mask_token_id, all_token_ids[-1])

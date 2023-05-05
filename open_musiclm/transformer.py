@@ -240,7 +240,8 @@ class Attention(nn.Module):
 
         # project for queries, keys, values
 
-        q, k, v = self.to_q(x), *self.to_kv(kv_input).chunk(2, dim=-1)
+        with torch.autocast('cuda', enabled=(not self.use_memory_efficient_attention)):
+            q, k, v = self.to_q(x), *self.to_kv(kv_input).chunk(2, dim=-1)
 
         # null key / values
 
