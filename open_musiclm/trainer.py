@@ -33,7 +33,7 @@ from .utils import (all_rows_have_eos_id, append_eos_id,
                     batch_unique_consecutive, beartype_jit, ceil_div,
                     copy_file_to_folder, default, eval_decorator, exists,
                     generate_mask_with_prob, get_embeds, gumbel_sample,
-                    mask_out_after_eos_id, round_down_nearest_multiple, top_k)
+                    mask_out_after_eos_id, round_down_nearest_multiple, top_k, cosine_schedule)
 
 try:
     import wandb
@@ -178,6 +178,7 @@ class SingleStageTrainer(nn.Module):
                 cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 1.]),
                 mask_prob=mask_prob,
             )
+            self.maskgit_mode = model_config.semantic_cfg.maskgit_mode
             if self.use_preprocessed_data:
                 self.ds_fields = ('clap_token_ids', 'semantic_token_ids')
             else:
@@ -195,6 +196,7 @@ class SingleStageTrainer(nn.Module):
                 cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.]),
                 mask_prob=mask_prob,
             )
+            self.maskgit_mode = model_config.coarse_cfg.maskgit_mode
             if self.use_preprocessed_data:
                 self.ds_fields = ('clap_token_ids', 'semantic_token_ids', 'coarse_token_ids')
             else:
@@ -211,6 +213,7 @@ class SingleStageTrainer(nn.Module):
                 cross_entropy_loss_weights=default(cross_entropy_loss_weights, [0., 0., 1.]),
                 mask_prob=mask_prob,
             )
+            self.maskgit_mode = model_config.fine_cfg.maskgit_mode
             if self.use_preprocessed_data:
                 self.ds_fields = ('clap_token_ids', 'coarse_token_ids', 'fine_token_ids')
             else:
@@ -438,7 +441,13 @@ class SingleStageTrainer(nn.Module):
 
                 non_empty_batch = True
 
-                loss, _, _ = self.train_wrapper(**data_kwargs, return_loss=True)
+                maskgit_prob = None
+                if self.maskgit_mode:
+                    batch_size = data_kwargs['clap_token_ids'].shape[0]
+                    timesteps = torch.rand(batch_size, device=device)
+                    maskgit_prob = cosine_schedule(timesteps)
+
+                loss, _, _ = self.train_wrapper(**data_kwargs, return_loss=True, maskgit_prob=maskgit_prob)
 
                 self.accelerator.backward(loss / self.grad_accum_every)
 
