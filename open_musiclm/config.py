@@ -53,6 +53,7 @@ class SemanticConfig:
     heads: int = 8
     attn_dropout: float = 0.0
     ff_dropout: float = 0.1
+    use_conv_ff: bool = True
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
@@ -67,6 +68,7 @@ class CoarseConfig:
     heads: int = 8
     attn_dropout: float = 0.0
     ff_dropout: float = 0.1
+    use_conv_ff: bool = True
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'
@@ -80,6 +82,7 @@ class FineConfig:
     heads: int = 8
     attn_dropout: float = 0.0
     ff_dropout: float = 0.1
+    use_conv_ff: bool = True
     grad_shrink_alpha: float = 0.1
     non_causal_prefix_size: int = 0
     relative_position_bias_type: RelativePositionBiasType = 'continuous'

@@ -137,12 +137,23 @@ class GEGLU(nn.Module):
         return F.gelu(gate) * x
 
 
-def FeedForward(dim, mult=4, dropout=0.1):
+def ConvFeedForward(dim, mult=4, dropout=0.1):
     inner_dim = int(dim * 2 * mult / 3)
     return nn.Sequential(
         LayerNorm(dim),
         nn.Linear(dim, inner_dim * 2, bias=False),
         CausalDSConv(inner_dim * 2),
+        GEGLU(),
+        LayerNorm(inner_dim),
+        nn.Dropout(dropout),
+        nn.Linear(inner_dim, dim, bias=False)
+    )
+
+def FeedForward(dim, mult=4, dropout=0.1):
+    inner_dim = int(dim * mult)
+    return nn.Sequential(
+        LayerNorm(dim),
+        nn.Linear(dim, inner_dim * 2, bias=False),
         GEGLU(),
         LayerNorm(inner_dim),
         nn.Dropout(dropout),
@@ -335,6 +346,7 @@ class Transformer(nn.Module):
         cross_attend=False,
         attn_dropout=0.,
         ff_dropout=0.,
+        use_conv_ff=True,
         grad_shrink_alpha=0.1,
         cond_as_self_attn_prefix=False,
         non_causal_prefix_size=0,
@@ -365,7 +377,7 @@ class Transformer(nn.Module):
                 Attention(dim=dim, heads=heads, dropout=attn_dropout, causal=True, non_causal_prefix=non_causal_prefix_size, **kwargs),
                 Attention(dim=dim, heads=heads, dropout=attn_dropout, dim_context=dim_context,
                           num_null_kv=1, norm_context=True, **kwargs) if cross_attend else None,
-                FeedForward(dim=dim, dropout=ff_dropout)
+                ConvFeedForward(dim=dim, dropout=ff_dropout) if use_conv_ff else FeedForward(dim=dim, dropout=ff_dropout),
             ]))
 
         self.norm = LayerNorm(dim)
