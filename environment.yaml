@@ -24,5 +24,5 @@ dependencies:
     - beartype
     - joblib
     - h5py
-    - sklearn
+    - scikit-learn
     - wget
