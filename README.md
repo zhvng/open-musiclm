@@ -152,7 +152,7 @@ that re-imagines music. If you're interested check them out at [okio.ai](https:/
 @article{wu2022large,
   title     = {Large-scale Contrastive Language-Audio Pretraining with Feature Fusion and Keyword-to-Caption Augmentation},
   author    = {Wu, Yusong and Chen, Ke and Zhang, Tianyu and Hui, Yuchen and Berg-Kirkpatrick, Taylor and Dubnov, Shlomo},
-  journal={arXiv preprint arXiv:2211:06687},
+  journal   = {arXiv preprint arXiv:2211:06687},
   year      = {2022},
 }
 ```
@@ -165,9 +165,12 @@ that re-imagines music. If you're interested check them out at [okio.ai](https:/
 }
 ```
 ```bibtex
-@article{li2022large,
-  title     = {Large-Scale Pretrained Model for Self-Supervised Music Audio Representation Learning},
-  author    = {Li, Yizhi and Yuan, Ruibin and Zhang, Ge and Ma, Yinghao and Lin, Chenghua and Chen, Xingran and Ragni, Anton and Yin, Hanzhi and Hu, Zhijie and He, Haoyu and others},
-  year      = {2022}
+@misc{li2023mert,
+  title     = {MERT: Acoustic Music Understanding Model with Large-Scale Self-supervised Training}, 
+  author    = {Yizhi Li and Ruibin Yuan and Ge Zhang and Yinghao Ma and Xingran Chen and Hanzhi Yin and Chenghua Lin and Anton Ragni and Emmanouil Benetos and Norbert Gyenge and Roger Dannenberg and Ruibo Liu and Wenhu Chen and Gus Xia and Yemin Shi and Wenhao Huang and Yike Guo and Jie Fu},
+  year      = {2023},
+  eprint    = {2306.00107},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.SD}
 }
 ```
